@@ -1,0 +1,397 @@
+<!DOCTYPE html><html lang="en"><head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SMART SOIL — Your Soil Health at a Glance</title>
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <script id="tailwind-config">/** @type {import('tailwindcss').Config} */
+globalThis.tailwind = globalThis.tailwind || {};
+globalThis.tailwind.config = {
+  darkMode: 'class',
+  theme: {
+    extend: {
+      colors: {
+        'warning': '#B45309',
+        'on-warning': '#FFFFFF',
+        'warning-container': '#FEF3C7',
+        'on-warning-container': '#78350F',
+        'success': '#166534',
+        'on-success': '#FFFFFF',
+        'success-container': '#DCFCE7',
+        'on-success-container': '#14532D',
+        'soil': '#7A5438',
+        'on-soil': '#FFFFFF',
+        'soil-container': '#F5EAE1',
+        'on-soil-container': '#45270F',
+        'light-primary': '#013621',
+        'light-on-primary': '#FFFFFF',
+        'light-primary-container': '#1E4D36',
+        'light-on-primary-container': '#FFFFFF',
+        'light-secondary': '#446650',
+        'light-on-secondary': '#FFFFFF',
+        'light-secondary-container': '#C6ECD0',
+        'light-on-secondary-container': '#163724',
+        'light-tertiary': '#45270F',
+        'light-on-tertiary': '#FFFFFF',
+        'light-tertiary-container': '#5F3D23',
+        'light-on-tertiary-container': '#FFFFFF',
+        'light-error': '#BA1A1A',
+        'light-on-error': '#FFFFFF',
+        'light-error-container': '#FFDAD6',
+        'light-on-error-container': '#93000A',
+        'light-background': '#F3EFE6',
+        'light-on-background': '#1B1C1A',
+        'light-surface': '#F3EFE6',
+        'light-surface-dim': '#DFD9CC',
+        'light-surface-bright': '#FAF8F3',
+        'light-surface-container-lowest': '#FDFCF9',
+        'light-surface-container-low': '#EFEAE0',
+        'light-surface-container': '#E8E2D5',
+        'light-surface-container-high': '#E0D9CA',
+        'light-surface-container-highest': '#D8D0BF',
+        'light-on-surface': '#1B1C1A',
+        'light-surface-variant': '#DCE5DD',
+        'light-on-surface-variant': '#414943',
+        'light-outline': '#717972',
+        'light-outline-variant': '#C8C1B4',
+        'light-inverse-surface': '#2F312E',
+        'light-inverse-on-surface': '#F2F1ED',
+        'light-inverse-primary': '#A0D2B3',
+      },
+      borderRadius: {
+        'sm': '12px',
+        'DEFAULT': '20px',
+        'md': '22px',
+        'lg': '28px',
+        'xl': '32px',
+        'full': '9999px',
+      },
+      spacing: {
+        'gutter-xs': '4px',
+        'gutter-sm': '8px',
+        'gutter-md': '16px',
+        'gutter-lg': '24px',
+        'gutter-xl': '32px',
+        'section': '24px',
+        'page-margin': '16px',
+      },
+      fontFamily: {
+        'display': ['"Mulish"', 'sans-serif'],
+        'headline': ['"Mulish"', 'sans-serif'],
+        'title': ['"Instrument Sans"', 'sans-serif'],
+        'body': ['"Instrument Sans"', 'sans-serif'],
+        'label': ['"Instrument Sans"', 'sans-serif'],
+        'mono': ['"Source Code Pro"', 'monospace'],
+      },
+      fontSize: {
+        'display-lg': ['36px', { lineHeight: '42px', letterSpacing: '-0.5px', fontWeight: '700' }],
+        'display-lg-mobile': ['28px', { lineHeight: '34px', letterSpacing: '-0.25px', fontWeight: '700' }],
+        'headline-lg': ['24px', { lineHeight: '30px', letterSpacing: '-0.25px', fontWeight: '700' }],
+        'headline-md': ['20px', { lineHeight: '26px', letterSpacing: '-0.15px', fontWeight: '700' }],
+        'title-lg': ['18px', { lineHeight: '24px', letterSpacing: '0px', fontWeight: '600' }],
+        'title-md': ['16px', { lineHeight: '22px', letterSpacing: '0px', fontWeight: '600' }],
+        'body-lg': ['16px', { lineHeight: '24px', letterSpacing: '0px', fontWeight: '400' }],
+        'body-md': ['14px', { lineHeight: '20px', letterSpacing: '0px', fontWeight: '400' }],
+        'body-sm': ['12px', { lineHeight: '18px', letterSpacing: '0.1px', fontWeight: '400' }],
+        'label-lg': ['14px', { lineHeight: '20px', letterSpacing: '0.1px', fontWeight: '600' }],
+        'label-md': ['12px', { lineHeight: '16px', letterSpacing: '0.2px', fontWeight: '600' }],
+        'label-sm': ['11px', { lineHeight: '14px', letterSpacing: '0.3px', fontWeight: '600' }],
+        'mono-lg': ['24px', { lineHeight: '30px', letterSpacing: '-0.25px', fontWeight: '600' }],
+        'mono-md': ['14px', { lineHeight: '20px', letterSpacing: '0px', fontWeight: '500' }],
+        'mono-sm': ['12px', { lineHeight: '16px', letterSpacing: '0px', fontWeight: '500' }],
+      },
+      transitionDuration: {
+        'state-change': '120ms',
+        'surface-enter': '220ms',
+        'surface-exit': '150ms',
+      },
+      transitionDelay: {
+        'state-change': '0ms',
+        'surface-enter': '0ms',
+        'surface-exit': '0ms',
+      },
+      transitionTimingFunction: {
+        'state-change': 'ease-out',
+        'surface-enter': 'cubic-bezier(0.2, 0, 0, 1)',
+        'surface-exit': 'cubic-bezier(0.3, 0, 1, 1)',
+      },
+    },
+  },
+};
+if (typeof module !== 'undefined') module.exports = globalThis.tailwind.config;
+</script>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&amp;family=Mulish:wght@600;700&amp;family=Source+Code+Pro:wght@500;600&amp;display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=block" rel="stylesheet">
+  <style>
+    .material-symbols-outlined { display: inline-block; width: 1em; height: 1em; line-height: 1 !important; box-sizing: content-box; overflow: hidden; white-space: nowrap; direction: ltr; vertical-align: middle; }
+    .clay-card { box-shadow: 0 12px 24px -6px rgba(69, 39, 15, 0.12), 0 4px 10px -2px rgba(1, 54, 33, 0.06), inset 0 4px 8px rgba(255, 255, 255, 0.9), inset 0 -5px 10px rgba(69, 39, 15, 0.07); }
+    .clay-btn-primary { box-shadow: 0 8px 18px -4px rgba(1, 54, 33, 0.28), inset 0 3px 5px rgba(255, 255, 255, 0.28), inset 0 -4px 8px rgba(0, 0, 0, 0.22); }
+    .clay-inset { box-shadow: inset 0 3px 7px rgba(69, 39, 15, 0.10), inset 0 -2px 4px rgba(255, 255, 255, 0.75); }
+    .clay-dock { box-shadow: 0 -6px 24px -6px rgba(69, 39, 15, 0.14), inset 0 4px 8px rgba(255, 255, 255, 0.9); }
+  </style>
+</head>
+<body class="bg-light-surface text-light-on-surface font-body antialiased">
+  <div class="min-h-[884px] flex flex-col max-w-5xl mx-auto bg-light-surface" data-stitch-vh="min-h-[884px]===min-h-screen">
+    <!-- Top App Header -->
+    <header class="sticky top-0 z-20 bg-light-surface border-b border-light-outline-variant px-page-margin py-gutter-sm">
+      <div class="flex flex-wrap items-center justify-between gap-gutter-sm">
+        <div class="flex items-center gap-gutter-sm">
+          <div class="w-10 h-10 rounded bg-light-primary text-light-on-primary clay-btn-primary flex items-center justify-center shrink-0">
+            <span class="material-symbols-outlined text-[22px]" aria-hidden="true">compost</span>
+          </div>
+          <div>
+            <h1 class="font-headline text-title-lg text-light-on-surface leading-tight">SMART SOIL</h1>
+            <p class="font-body text-body-sm text-light-on-surface-variant">Crop: <strong id="home-crop-name" class="text-light-on-surface">Paddy (Rice)</strong></p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-gutter-xs flex-wrap justify-end">
+          <span id="conn-badge" data-component-id="badge-success" data-component-type="badge" data-component-variant="success" role="status" class="inline-flex items-center gap-gutter-xs px-gutter-sm py-gutter-xs rounded-full bg-success-container text-on-success-container">
+            <span class="w-2 h-2 rounded-full bg-success" aria-hidden="true"></span>
+            <span class="font-label text-label-sm">ESP32 Connected</span>
+          </span>
+          <span id="mode-badge" data-component-id="badge-success" data-component-type="badge" data-component-variant="success" role="status" class="inline-flex items-center gap-gutter-xs px-gutter-sm py-gutter-xs rounded-full bg-success-container text-on-success-container">
+            <span class="font-label text-label-sm">LIVE DATA</span>
+          </span>
+        </div>
+      </div>
+
+      <!-- Exhibition Demo Switcher -->
+      <div class="mt-gutter-sm flex items-center gap-gutter-xs overflow-x-auto pb-gutter-xs" role="group" aria-label="Exhibition display mode">
+        <button type="button" onclick="setExhibitionMode(&#39;live&#39;)" id="ex-btn-live" class="px-gutter-sm py-1 rounded-full bg-light-primary text-light-on-primary clay-btn-primary font-label text-label-sm shrink-0">Live ESP32 (Normal)</button>
+        <button type="button" onclick="setExhibitionMode(&#39;alert&#39;)" id="ex-btn-alert" class="px-gutter-sm py-1 rounded-full bg-light-surface-container text-light-on-surface-variant font-label text-label-sm shrink-0">Demo Mode (Low Moisture &amp; High pH Alert)</button>
+      </div>
+    </header>
+
+    <main class="flex-1 px-page-margin py-gutter-md pb-28 flex flex-col gap-gutter-md">
+      <!-- Main Heading -->
+      <div class="flex flex-wrap items-baseline justify-between gap-gutter-xs">
+        <h2 class="font-headline text-headline-md text-light-on-surface">Your Soil Health at a Glance</h2>
+        <span id="demo-disclaimer" class="hidden px-gutter-sm py-0.5 rounded-full bg-warning-container text-on-warning-container font-label text-label-sm">Illustrative Example Readings (Demo)</span>
+      </div>
+
+      <!-- Three Prominent Sensor Cards -->
+      <section aria-label="ESP32 sensor readings" class="grid grid-cols-1 md:grid-cols-3 gap-gutter-md items-stretch">
+        <!-- 1. Moisture Card -->
+        <article class="h-full bg-light-surface-container-lowest rounded-lg clay-card p-gutter-md flex flex-col justify-between gap-gutter-sm">
+          <div class="flex items-center justify-between">
+            <span class="font-headline text-title-lg text-light-on-surface flex items-center gap-gutter-xs">
+              <span class="material-symbols-outlined text-light-primary text-[22px]" aria-hidden="true">water_drop</span>
+              Moisture
+            </span>
+            <span id="m-status-pill" class="px-gutter-sm py-gutter-xs rounded-full bg-success-container text-on-success-container font-label text-label-sm">Suitable</span>
+          </div>
+
+          <div class="flex items-baseline gap-2">
+            <span id="m-value" class="font-mono text-display-lg text-light-on-surface tabular-nums">44%</span>
+            <span class="font-body text-body-sm text-light-on-surface-variant">Target: 38–55%</span>
+          </div>
+
+          <!-- Animated Moisture Bar Indicator -->
+          <div class="w-full h-3.5 rounded-full bg-light-surface-container clay-inset overflow-hidden">
+            <div id="m-bar" class="h-full rounded-full bg-light-primary transition-all duration-500" style="width: 44%;"></div>
+          </div>
+
+          <div id="m-alert-box" class="p-gutter-sm rounded bg-light-surface-container-low text-light-on-surface-variant font-body text-body-sm">
+            <strong id="m-alert-title" class="text-light-on-surface block">Within crop range</strong>
+            <span id="m-next-step">Next: Check again tomorrow morning.</span>
+          </div>
+        </article>
+
+        <!-- 2. Soil pH Card -->
+        <article class="h-full bg-light-surface-container-lowest rounded-lg clay-card p-gutter-md flex flex-col justify-between gap-gutter-sm">
+          <div class="flex items-center justify-between">
+            <span class="font-headline text-title-lg text-light-on-surface flex items-center gap-gutter-xs">
+              <span class="material-symbols-outlined text-soil text-[22px]" aria-hidden="true">science</span>
+              Soil pH
+            </span>
+            <span id="ph-status-pill" class="px-gutter-sm py-gutter-xs rounded-full bg-success-container text-on-success-container font-label text-label-sm">Near Neutral</span>
+          </div>
+
+          <div class="flex items-baseline gap-2">
+            <span id="ph-value" class="font-mono text-display-lg text-light-on-surface tabular-nums">6.4</span>
+            <span class="font-body text-body-sm text-light-on-surface-variant">Preferred: 5.5–7.0</span>
+          </div>
+
+          <!-- Visual pH Scale -->
+          <div class="flex flex-col gap-1">
+            <div class="relative w-full h-3.5 rounded-full overflow-hidden flex">
+              <div class="flex-1 bg-warning/70"></div>
+              <div class="flex-1 bg-success/75"></div>
+              <div class="flex-1 bg-soil/70"></div>
+              <div id="ph-marker" class="absolute top-0 bottom-0 w-2 bg-light-on-surface rounded-full border border-light-surface-container-lowest transition-all duration-500" style="left: 46%;"></div>
+            </div>
+            <div class="flex justify-between font-mono text-[11px] text-light-on-surface-variant tabular-nums">
+              <span>Acidic</span>
+              <span>Neutral (7.0)</span>
+              <span>Alkaline</span>
+            </div>
+          </div>
+
+          <div id="ph-alert-box" class="p-gutter-sm rounded bg-light-surface-container-low text-light-on-surface-variant font-body text-body-sm">
+            <strong id="ph-alert-title" class="text-light-on-surface block">Balanced for paddy</strong>
+            <span id="ph-next-step">Next: No pH amendment needed today.</span>
+          </div>
+        </article>
+
+        <!-- 3. Temperature Card -->
+        <article class="h-full bg-light-surface-container-lowest rounded-lg clay-card p-gutter-md flex flex-col justify-between gap-gutter-sm">
+          <div class="flex items-center justify-between">
+            <span class="font-headline text-title-lg text-light-on-surface flex items-center gap-gutter-xs">
+              <span class="material-symbols-outlined text-warning text-[22px]" aria-hidden="true">thermostat</span>
+              Temperature
+            </span>
+            <span id="t-status-pill" class="px-gutter-sm py-gutter-xs rounded-full bg-success-container text-on-success-container font-label text-label-sm">Optimal</span>
+          </div>
+
+          <div class="flex items-baseline gap-2">
+            <span id="t-value" class="font-mono text-display-lg text-light-on-surface tabular-nums">26.8°C</span>
+            <span class="font-body text-body-sm text-light-on-surface-variant">DS18B20 Probe</span>
+          </div>
+
+          <div class="w-full h-3.5 rounded-full bg-light-surface-container clay-inset overflow-hidden">
+            <div id="t-bar" class="h-full rounded-full bg-soil transition-all duration-500" style="width: 54%;"></div>
+          </div>
+
+          <div class="p-gutter-sm rounded bg-light-surface-container-low text-light-on-surface-variant font-body text-body-sm">
+            <strong class="text-light-on-surface block">Root-zone warmth</strong>
+            <span id="t-desc">Supports steady root activity without midday heat stress.</span>
+          </div>
+        </article>
+      </section>
+
+      <!-- Prominent "Today's Soil Advice" Section -->
+      <section id="advice-banner" aria-label="Today&#39;s Soil Advice" class="bg-light-primary-container text-light-on-primary-container rounded-lg clay-btn-primary p-gutter-md flex flex-col md:flex-row md:items-center justify-between gap-gutter-md">
+        <div class="flex items-start gap-gutter-sm">
+          <span class="material-symbols-outlined text-[26px] shrink-0 mt-0.5" aria-hidden="true">lightbulb</span>
+          <div>
+            <span class="font-label text-label-sm uppercase tracking-wide opacity-90 block">Today&#39;s Soil Advice</span>
+            <p id="advice-text" class="font-body text-body-md font-medium mt-0.5">
+              Moisture (44%) and pH (6.4) are within your Paddy crop&#39;s preferred range. Keep monitoring morning probe readings before scheduling irrigation.
+            </p>
+          </div>
+        </div>
+        <a href="../ai-advisor/AiAdvisor.html" class="shrink-0 inline-flex items-center justify-center gap-gutter-xs min-h-[44px] px-gutter-md rounded-full bg-light-surface-container-lowest text-light-primary font-label text-label-lg">
+          Open AI Advisor
+          <span class="material-symbols-outlined text-[18px]" aria-hidden="true">arrow_forward</span>
+        </a>
+      </section>
+
+      <!-- Four Quick-Action Cards -->
+      <section aria-label="Quick actions" class="grid grid-cols-2 md:grid-cols-4 gap-gutter-sm">
+        <a href="../soil-image-analysis/SoilImageAnalysis.html" class="bg-light-surface-container-lowest rounded-lg clay-card p-gutter-md hover:ring-2 hover:ring-light-primary transition-all flex flex-col items-start gap-gutter-xs">
+          <span class="w-10 h-10 rounded bg-soil-container text-on-soil-container flex items-center justify-center">
+            <span class="material-symbols-outlined text-[22px]" aria-hidden="true">terrain</span>
+          </span>
+          <span class="font-headline text-title-lg text-light-on-surface">Scan Soil</span>
+          <span class="font-body text-body-sm text-light-on-surface-variant">Visual soil check</span>
+        </a>
+
+        <a href="../crop-identification/CropIdentification.html" class="bg-light-surface-container-lowest rounded-lg clay-card p-gutter-md hover:ring-2 hover:ring-light-primary transition-all flex flex-col items-start gap-gutter-xs">
+          <span class="w-10 h-10 rounded bg-light-secondary-container text-light-on-secondary-container flex items-center justify-center">
+            <span class="material-symbols-outlined text-[22px]" aria-hidden="true">eco</span>
+          </span>
+          <span class="font-headline text-title-lg text-light-on-surface">Identify Crop</span>
+          <span class="font-body text-body-sm text-light-on-surface-variant">Confirm crop &amp; stage</span>
+        </a>
+
+        <a href="../plant-health-scan/PlantHealthScan.html" class="bg-light-surface-container-lowest rounded-lg clay-card p-gutter-md hover:ring-2 hover:ring-light-primary transition-all flex flex-col items-start gap-gutter-xs">
+          <span class="w-10 h-10 rounded bg-warning-container text-on-warning-container flex items-center justify-center">
+            <span class="material-symbols-outlined text-[22px]" aria-hidden="true">healing</span>
+          </span>
+          <span class="font-headline text-title-lg text-light-on-surface">Check Plant Health</span>
+          <span class="font-body text-body-sm text-light-on-surface-variant">Leaf symptom scan</span>
+        </a>
+
+        <a href="../ai-advisor/AiAdvisor.html" class="bg-light-surface-container-lowest rounded-lg clay-card p-gutter-md hover:ring-2 hover:ring-light-primary transition-all flex flex-col items-start gap-gutter-xs">
+          <span class="w-10 h-10 rounded bg-light-primary text-light-on-primary flex items-center justify-center">
+            <span class="material-symbols-outlined text-[22px]" aria-hidden="true">psychology</span>
+          </span>
+          <span class="font-headline text-title-lg text-light-on-surface">Get AI Advice</span>
+          <span class="font-body text-body-sm text-light-on-surface-variant">Guided soil plan</span>
+        </a>
+      </section>
+    </main>
+
+    <!-- Fixed 4-Tab Bottom Navigation: Home | Scan | AI Advisor | Reports -->
+    <nav aria-label="Primary navigation" class="fixed bottom-0 left-0 right-0 z-30 bg-light-surface-container-lowest rounded-t-lg clay-dock">
+      <div class="max-w-5xl mx-auto grid grid-cols-4 h-16">
+        <a href="HomeDashboard.html" aria-current="page" class="flex flex-col items-center justify-center gap-0.5 text-light-primary bg-light-secondary-container/40">
+          <span class="material-symbols-outlined text-[22px]" style="font-variation-settings: &#39;FILL&#39; 1;" aria-hidden="true">home</span>
+          <span class="font-label text-label-sm">Home</span>
+        </a>
+        <a href="../scan-hub/ScanHub.html" class="flex flex-col items-center justify-center gap-0.5 text-light-on-surface-variant hover:text-light-primary">
+          <span class="material-symbols-outlined text-[22px]" aria-hidden="true">photo_camera</span>
+          <span class="font-label text-label-sm">Scan</span>
+        </a>
+        <a href="../ai-advisor/AiAdvisor.html" class="flex flex-col items-center justify-center gap-0.5 text-light-on-surface-variant hover:text-light-primary">
+          <span class="material-symbols-outlined text-[22px]" aria-hidden="true">psychology</span>
+          <span class="font-label text-label-sm">AI Advisor</span>
+        </a>
+        <a href="../reports-history/ReportsHistory.html" class="flex flex-col items-center justify-center gap-0.5 text-light-on-surface-variant hover:text-light-primary">
+          <span class="material-symbols-outlined text-[22px]" aria-hidden="true">description</span>
+          <span class="font-label text-label-sm">Reports</span>
+        </a>
+      </div>
+    </nav>
+  </div>
+
+  <script>
+    function setExhibitionMode(mode) {
+      const isLive = mode === 'live';
+      document.getElementById('ex-btn-live').className = isLive
+        ? 'px-gutter-sm py-1 rounded-full bg-light-primary text-light-on-primary clay-btn-primary font-label text-label-sm shrink-0'
+        : 'px-gutter-sm py-1 rounded-full bg-light-surface-container text-light-on-surface-variant font-label text-label-sm shrink-0';
+      document.getElementById('ex-btn-alert').className = !isLive
+        ? 'px-gutter-sm py-1 rounded-full bg-light-primary text-light-on-primary clay-btn-primary font-label text-label-sm shrink-0'
+        : 'px-gutter-sm py-1 rounded-full bg-light-surface-container text-light-on-surface-variant font-label text-label-sm shrink-0';
+
+      document.getElementById('demo-disclaimer').classList.toggle('hidden', isLive);
+      const modeBadge = document.getElementById('mode-badge');
+      modeBadge.innerHTML = isLive ? '<span class="font-label text-label-sm">LIVE DATA</span>' : '<span class="font-label text-label-sm">DEMO DATA</span>';
+      modeBadge.className = isLive
+        ? 'inline-flex items-center gap-gutter-xs px-gutter-sm py-gutter-xs rounded-full bg-success-container text-on-success-container'
+        : 'inline-flex items-center gap-gutter-xs px-gutter-sm py-gutter-xs rounded-full bg-warning-container text-on-warning-container';
+
+      // Moisture
+      document.getElementById('m-value').textContent = isLive ? '44%' : '24%';
+      document.getElementById('m-bar').style.width = isLive ? '44%' : '24%';
+      document.getElementById('m-status-pill').textContent = isLive ? 'Suitable' : 'Low';
+      document.getElementById('m-status-pill').className = isLive
+        ? 'px-gutter-sm py-gutter-xs rounded-full bg-success-container text-on-success-container font-label text-label-sm'
+        : 'px-gutter-sm py-gutter-xs rounded-full bg-warning-container text-on-warning-container font-label text-label-sm';
+      document.getElementById('m-alert-box').className = isLive
+        ? 'p-gutter-sm rounded bg-light-surface-container-low text-light-on-surface-variant font-body text-body-sm'
+        : 'p-gutter-sm rounded bg-warning-container text-on-warning-container font-body text-body-sm';
+      document.getElementById('m-alert-title').textContent = isLive ? 'Within crop range' : 'Alert: Below 38% threshold';
+      document.getElementById('m-next-step').textContent = isLive ? 'Next: Check again tomorrow morning.' : 'Next: Check another plot spot & plan irrigation.';
+
+      // pH
+      document.getElementById('ph-value').textContent = isLive ? '6.4' : '7.9';
+      document.getElementById('ph-marker').style.left = isLive ? '46%' : '76%';
+      document.getElementById('ph-status-pill').textContent = isLive ? 'Near Neutral' : 'Alkaline';
+      document.getElementById('ph-status-pill').className = isLive
+        ? 'px-gutter-sm py-gutter-xs rounded-full bg-success-container text-on-success-container font-label text-label-sm'
+        : 'px-gutter-sm py-gutter-xs rounded-full bg-warning-container text-on-warning-container font-label text-label-sm';
+      document.getElementById('ph-alert-box').className = isLive
+        ? 'p-gutter-sm rounded bg-light-surface-container-low text-light-on-surface-variant font-body text-body-sm'
+        : 'p-gutter-sm rounded bg-warning-container text-on-warning-container font-body text-body-sm';
+      document.getElementById('ph-alert-title').textContent = isLive ? 'Balanced for paddy' : 'Alert: Above preferred 5.5–7.0 range';
+      document.getElementById('ph-next-step').textContent = isLive ? 'Next: No pH amendment needed today.' : 'Next: Review a soil test before choosing an amendment.';
+
+      // Temperature
+      document.getElementById('t-value').textContent = isLive ? '26.8°C' : '31.4°C';
+      document.getElementById('t-bar').style.width = isLive ? '54%' : '78%';
+      document.getElementById('t-status-pill').textContent = isLive ? 'Optimal' : 'Warm';
+      document.getElementById('t-desc').textContent = isLive
+        ? 'Supports steady root activity without midday heat stress.'
+        : 'Higher surface warmth; organic mulch can help shade roots.';
+
+      // Today's Soil Advice
+      document.getElementById('advice-text').textContent = isLive
+        ? "Moisture (44%) and pH (6.4) are within your Paddy crop's preferred range. Keep monitoring morning probe readings before scheduling irrigation."
+        : "Soil moisture (24%) is below your selected crop's threshold and pH (7.9) is above its preferred range. Check another area of the plot and review a reliable soil test before choosing an amendment.";
+    }
+  </script>
+
+
+</body></html>
