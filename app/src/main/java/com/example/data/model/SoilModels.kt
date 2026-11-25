@@ -203,6 +203,7 @@ data class NpkLabExtractionResult(
     val labSource: String,
     val reportDate: String,
     val extractionNotes: String,
+    val isUnreadable: Boolean = false,
     val isDemo: Boolean = false
 )
 

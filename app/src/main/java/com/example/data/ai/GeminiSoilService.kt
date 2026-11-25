@@ -3,6 +3,8 @@ package com.example.data.ai
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Matrix
+import android.media.ExifInterface
 import android.net.Uri
 import android.util.Log
 import com.example.data.model.AiAdvisoryPlan
@@ -175,10 +177,10 @@ class GeminiSoilService(private val context: Context) {
 
     suspend fun analyzeSoilImage(imageUri: Uri): Result<SoilScanResult> = runSafeAi {
         val bitmap = decodeScaledBitmap(imageUri)
-            ?: return@runSafeAi Result.failure(IllegalArgumentException("Could not read selected soil image."))
+            ?: return@runSafeAi Result.failure(IllegalArgumentException("Could not read selected soil image. Please choose a JPEG or PNG photo."))
         val promptText = """
-            You are assisting a school science exhibition project called SMART SOIL.
-            Analyze this soil photograph objectively.
+            You are assisting FarmerBuddy (SMART SOIL), an AI-powered soil monitoring app.
+            Analyze this soil photograph objectively in simple, clear, farmer-friendly English.
             STRICT SCIENTIFIC RULES:
             - Describe only visible characteristics (color, clodding, texture clues, visible organic matter).
             - Estimate a possible soil type cautiously.
@@ -194,25 +196,37 @@ class GeminiSoilService(private val context: Context) {
                 }
             )
         }
-        val json = JSONObject(response.text ?: throw IllegalStateException("Empty AI response"))
-        val testsArr = json.getJSONArray("recommendedAdditionalTests")
-        val tests = (0 until testsArr.length()).map { testsArr.getString(it) }
+        val json = parseJsonObject(response.text)
+        val possibleSoilType = json.optString("possibleSoilType").trim()
+        val visibleCharacteristics = json.optString("visibleCharacteristics").trim()
+        if (possibleSoilType.isEmpty() || visibleCharacteristics.isEmpty()) {
+            throw IllegalStateException("Incomplete soil scan result. Please try a clearer photo.")
+        }
+        val testsArr = json.optJSONArray("recommendedAdditionalTests")
+        val tests = if (testsArr != null) {
+            (0 until testsArr.length()).mapNotNull { idx -> testsArr.optString(idx).trim().takeIf { it.isNotEmpty() } }
+        } else emptyList()
+
         Result.success(
             SoilScanResult(
-                visibleCharacteristics = json.getString("visibleCharacteristics"),
-                possibleSoilType = json.getString("possibleSoilType"),
-                organicMatterIndicators = json.getString("organicMatterIndicators"),
-                uncertaintyExplanation = json.getString("uncertaintyExplanation"),
-                recommendedAdditionalTests = tests
+                visibleCharacteristics = visibleCharacteristics,
+                possibleSoilType = possibleSoilType,
+                organicMatterIndicators = json.optString("organicMatterIndicators").trim()
+                    .ifEmpty { "No clear organic matter indicators visible." },
+                uncertaintyExplanation = json.optString("uncertaintyExplanation").trim()
+                    .ifEmpty { "A photo cannot measure soil pH, moisture %, or NPK nutrients." },
+                recommendedAdditionalTests = tests.ifEmpty {
+                    listOf("Check moisture with calibrated ESP32 probe", "Confirm pH and NPK via laboratory Soil Health Card")
+                }
             )
         )
     }
 
     suspend fun identifyCropImage(imageUri: Uri): Result<CropIdResult> = runSafeAi {
         val bitmap = decodeScaledBitmap(imageUri)
-            ?: return@runSafeAi Result.failure(IllegalArgumentException("Could not read selected crop image."))
+            ?: return@runSafeAi Result.failure(IllegalArgumentException("Could not read selected crop image. Please choose a JPEG or PNG photo."))
         val promptText = """
-            Identify the crop in this photo for SMART SOIL.
+            Identify the crop in this photo for FarmerBuddy (SMART SOIL) in simple, clear English.
             Explain visible identifying features (leaf shape, arrangement, stem, panicle/fruit).
             State confidence level and uncertainty/look-alikes clearly so the user can confirm before saving.
         """.trimIndent()
@@ -225,23 +239,30 @@ class GeminiSoilService(private val context: Context) {
                 }
             )
         }
-        val json = JSONObject(response.text ?: throw IllegalStateException("Empty AI response"))
+        val json = parseJsonObject(response.text)
+        val cropName = json.optString("possibleCropName").trim()
+        if (cropName.isEmpty()) {
+            throw IllegalStateException("Could not identify crop from this photo. Try a clearer leaf image.")
+        }
         Result.success(
             CropIdResult(
-                possibleCropName = json.getString("possibleCropName"),
-                confidenceLevel = json.getString("confidenceLevel"),
-                identifyingFeatures = json.getString("identifyingFeatures"),
-                uncertaintyNotes = json.getString("uncertaintyNotes"),
-                suggestedGrowthStage = json.getString("suggestedGrowthStage")
+                possibleCropName = cropName,
+                confidenceLevel = json.optString("confidenceLevel").trim().ifEmpty { "Moderate" },
+                identifyingFeatures = json.optString("identifyingFeatures").trim()
+                    .ifEmpty { "Visible leaf and stem pattern evaluated." },
+                uncertaintyNotes = json.optString("uncertaintyNotes").trim()
+                    .ifEmpty { "Please verify the crop match manually before saving." },
+                suggestedGrowthStage = json.optString("suggestedGrowthStage").trim().ifEmpty { "Vegetative" }
             )
         )
     }
 
     suspend fun analyzePlantHealthImage(imageUri: Uri, selectedCrop: String): Result<PlantHealthResult> = runSafeAi {
         val bitmap = decodeScaledBitmap(imageUri)
-            ?: return@runSafeAi Result.failure(IllegalArgumentException("Could not read selected plant photo."))
+            ?: return@runSafeAi Result.failure(IllegalArgumentException("Could not read selected plant photo. Please choose a JPEG or PNG photo."))
         val promptText = """
-            Examine this plant or leaf photograph (current crop profile: $selectedCrop).
+            Examine this plant or leaf photograph for FarmerBuddy (current crop profile: $selectedCrop).
+            Write in simple, clear, farmer-friendly English.
             STRICT SCIENTIFIC RULES:
             - Describe visible symptoms objectively.
             - List multiple possible explanations (nutrient deficiency, water stress, fungal/bacterial/viral, pest) without claiming a definitive disease diagnosis from an image alone.
@@ -257,23 +278,29 @@ class GeminiSoilService(private val context: Context) {
                 }
             )
         }
-        val json = JSONObject(response.text ?: throw IllegalStateException("Empty AI response"))
-        val explanations = json.getJSONArray("possibleExplanations").let { arr ->
-            (0 until arr.length()).map { arr.getString(it) }
+        val json = parseJsonObject(response.text)
+        val symptoms = json.optString("visibleSymptoms").trim()
+        if (symptoms.isEmpty()) {
+            throw IllegalStateException("Incomplete plant health result. Please try a closer photo.")
         }
-        val checks = json.getJSONArray("suggestedChecks").let { arr ->
-            (0 until arr.length()).map { arr.getString(it) }
-        }
-        val steps = json.getJSONArray("cautiousNextSteps").let { arr ->
-            (0 until arr.length()).map { arr.getString(it) }
-        }
+        val explanations = json.optJSONArray("possibleExplanations")?.let { arr ->
+            (0 until arr.length()).mapNotNull { arr.optString(it).trim().takeIf { s -> s.isNotEmpty() } }
+        }.orEmpty().ifEmpty { listOf("Multiple nutrient, water, or leaf stress factors can appear similar.") }
+        val checks = json.optJSONArray("suggestedChecks")?.let { arr ->
+            (0 until arr.length()).mapNotNull { arr.optString(it).trim().takeIf { s -> s.isNotEmpty() } }
+        }.orEmpty().ifEmpty { listOf("Inspect underside of leaves and check soil moisture.") }
+        val steps = json.optJSONArray("cautiousNextSteps")?.let { arr ->
+            (0 until arr.length()).mapNotNull { arr.optString(it).trim().takeIf { s -> s.isNotEmpty() } }
+        }.orEmpty().ifEmpty { listOf("Consult a local agriculture officer before applying treatments.") }
+
         Result.success(
             PlantHealthResult(
-                visibleSymptoms = json.getString("visibleSymptoms"),
+                visibleSymptoms = symptoms,
                 possibleExplanations = explanations,
                 suggestedChecks = checks,
                 cautiousNextSteps = steps,
-                diagnosisLimitations = json.getString("diagnosisLimitations")
+                diagnosisLimitations = json.optString("diagnosisLimitations").trim()
+                    .ifEmpty { "A photo alone cannot confirm a plant disease or exact deficiency." }
             )
         )
     }
@@ -282,7 +309,7 @@ class GeminiSoilService(private val context: Context) {
         val bitmap = decodeScaledBitmap(imageUri)
             ?: return@runSafeAi Result.failure(IllegalArgumentException("Could not read uploaded Soil Health Card or lab report image."))
         val promptText = """
-            Extract Nitrogen (N), Phosphorus (P), and Potassium (K) values from this uploaded Soil Health Card or laboratory soil report.
+            Extract Nitrogen (N), Phosphorus (P), and Potassium (K) values from this uploaded Soil Health Card or laboratory soil report for FarmerBuddy.
             STRICT RULES:
             - Extract ONLY values that are actually readable on the document.
             - If a value, unit, date, or lab name is blurred or missing, output 'Not readable'.
@@ -297,16 +324,25 @@ class GeminiSoilService(private val context: Context) {
                 }
             )
         }
-        val json = JSONObject(response.text ?: throw IllegalStateException("Empty AI response"))
+        val json = parseJsonObject(response.text)
+        val n = json.optString("nitrogen").trim().ifEmpty { "Not readable" }
+        val p = json.optString("phosphorus").trim().ifEmpty { "Not readable" }
+        val k = json.optString("potassium").trim().ifEmpty { "Not readable" }
+        val unreadable = isUnreadableField(n) && isUnreadableField(p) && isUnreadableField(k)
+
         Result.success(
             NpkLabExtractionResult(
-                nitrogen = json.getString("nitrogen"),
-                phosphorus = json.getString("phosphorus"),
-                potassium = json.getString("potassium"),
-                unit = json.getString("unit"),
-                labSource = json.getString("labSource"),
-                reportDate = json.getString("reportDate"),
-                extractionNotes = json.getString("extractionNotes")
+                nitrogen = n,
+                phosphorus = p,
+                potassium = k,
+                unit = json.optString("unit").trim().ifEmpty { "Not readable" },
+                labSource = json.optString("labSource").trim().ifEmpty { "Not readable" },
+                reportDate = json.optString("reportDate").trim().ifEmpty { "Not readable" },
+                extractionNotes = json.optString("extractionNotes").trim().ifEmpty {
+                    if (unreadable) "Could not clearly read N, P, K numbers. Please upload a sharper photo or enter values manually."
+                    else "Verify all extracted numbers against your printed card before saving."
+                },
+                isUnreadable = unreadable
             )
         )
     }
@@ -317,7 +353,7 @@ class GeminiSoilService(private val context: Context) {
         soilType: String
     ): Result<NpkRegionalReferenceResult> = runSafeAi {
         val promptText = """
-            Provide a cautious regional soil nutrient reference overview for:
+            Provide a cautious regional soil nutrient reference overview for FarmerBuddy:
             Crop: $crop
             State / District / Region: $region
             Soil Type (if known): ${soilType.ifBlank { "Not specified" }}
@@ -332,18 +368,20 @@ class GeminiSoilService(private val context: Context) {
         val response = withTimeout(AI_TIMEOUT_MS) {
             npkRegionalModel.generateContent(promptText)
         }
-        val json = JSONObject(response.text ?: throw IllegalStateException("Empty AI response"))
+        val json = parseJsonObject(response.text)
         Result.success(
             NpkRegionalReferenceResult(
                 crop = crop,
                 region = region,
                 soilType = soilType.ifBlank { "Not specified" },
-                sufficiencyStatus = json.getString("sufficiencyStatus"),
-                nutrientOverview = json.getString("nutrientOverview"),
-                source = json.getString("source"),
-                referenceDate = json.getString("referenceDate"),
-                limitations = json.getString("limitations"),
-                isInsufficientInfo = json.getBoolean("isInsufficientInfo")
+                sufficiencyStatus = json.optString("sufficiencyStatus").trim().ifEmpty { "Regional overview only" },
+                nutrientOverview = json.optString("nutrientOverview").trim()
+                    .ifEmpty { "Confirm actual soil nutrients using a local laboratory Soil Health Card." },
+                source = json.optString("source").trim().ifEmpty { "General Agricultural Extension Reference" },
+                referenceDate = json.optString("referenceDate").trim().ifEmpty { "General Reference" },
+                limitations = json.optString("limitations").trim()
+                    .ifEmpty { "Regional averages cannot replace a plot-specific laboratory soil test." },
+                isInsufficientInfo = json.optBoolean("isInsufficientInfo", false)
             )
         )
     }
@@ -354,7 +392,7 @@ class GeminiSoilService(private val context: Context) {
         contextSnapshot: String
     ): Result<AiAdvisoryPlan> = runSafeAi {
         val promptText = """
-            You are the SMART SOIL Agronomy Advisor for a school science exhibition.
+            You are the FarmerBuddy (SMART SOIL) Agronomy Advisor.
             Focus Topic: $topic
             User Question: ${userQuestion.ifBlank { "Provide practical soil & crop guidance based on the current readings and context." }}
 
@@ -363,7 +401,7 @@ class GeminiSoilService(private val context: Context) {
 
             STRICT SCIENTIFIC RULES:
             - Consider moisture, pH, temperature, crop, growth stage, soil scan, and any NPK report/reference provided.
-            - Do NOT treat DEMO data as live field measurements; acknowledge if readings are Demo or Unavailable.
+            - Distinguish DEMO data and REGIONAL REFERENCE ESTIMATES from LIVE ESP32 readings and VERIFIED LAB REPORTS.
             - Do NOT automatically recommend soil amendments (like lime or sulfur) from a single pH reading alone—advise verification and lab/buffer testing first.
             - Consider locally relevant organic/indigenous options (compost, farmyard manure, green manure, organic mulch, crop residues) only when appropriate.
             - NEVER invent fertilizer application quantities/dosages, guaranteed yield outcomes, or fake scientific citations.
@@ -373,19 +411,24 @@ class GeminiSoilService(private val context: Context) {
         val response = withTimeout(AI_TIMEOUT_MS) {
             advisorModel.generateContent(promptText)
         }
-        val json = JSONObject(response.text ?: throw IllegalStateException("Empty AI response"))
-        val summary = json.getString("summary")
-        val recArray = json.getJSONArray("recommendations")
-        val recs = (0 until recArray.length()).map { idx ->
-            val obj = recArray.getJSONObject(idx)
+        val json = parseJsonObject(response.text)
+        val summary = json.optString("summary").trim()
+        val recArray = json.optJSONArray("recommendations")
+            ?: throw IllegalStateException("Incomplete advisory recommendations.")
+        val recs = (0 until recArray.length()).mapNotNull { idx ->
+            val obj = recArray.optJSONObject(idx) ?: return@mapNotNull null
             AiRecommendationItem(
-                category = obj.getString("category"),
-                identifiedIssue = obj.getString("identifiedIssue"),
-                whyItMatters = obj.getString("whyItMatters"),
-                suggestedNextStep = obj.getString("suggestedNextStep"),
-                supportingEvidence = obj.getString("supportingEvidence"),
-                limitationsAndUncertainty = obj.getString("limitationsAndUncertainty")
+                category = obj.optString("category").trim().ifEmpty { "Soil Guidance" },
+                identifiedIssue = obj.optString("identifiedIssue").trim().ifEmpty { "Condition review" },
+                whyItMatters = obj.optString("whyItMatters").trim().ifEmpty { "Supports healthy root and crop growth." },
+                suggestedNextStep = obj.optString("suggestedNextStep").trim().ifEmpty { "Verify plot readings before acting." },
+                supportingEvidence = obj.optString("supportingEvidence").trim().ifEmpty { "Current sensor and crop context." },
+                limitationsAndUncertainty = obj.optString("limitationsAndUncertainty").trim()
+                    .ifEmpty { "Confirm with live probes and a Soil Health Card." }
             )
+        }
+        if (summary.isEmpty() || recs.isEmpty()) {
+            throw IllegalStateException("Incomplete advisory response. Please try again.")
         }
         Result.success(
             AiAdvisoryPlan(
@@ -397,23 +440,65 @@ class GeminiSoilService(private val context: Context) {
         )
     }
 
+    private fun isUnreadableField(value: String): Boolean {
+        val lower = value.trim().lowercase()
+        return lower.isEmpty() ||
+            lower == "not readable" ||
+            lower == "unreadable" ||
+            lower == "unclear" ||
+            lower == "missing" ||
+            lower == "n/a" ||
+            lower == "unknown"
+    }
+
+    private fun parseJsonObject(rawText: String?): JSONObject {
+        val text = rawText?.trim().orEmpty()
+        if (text.isEmpty()) throw IllegalStateException("AI returned an empty response. Please try again.")
+        val cleaned = text
+            .removePrefix("```json")
+            .removePrefix("```")
+            .removeSuffix("```")
+            .trim()
+        return JSONObject(cleaned)
+    }
+
     private suspend fun <T> runSafeAi(block: suspend () -> Result<T>): Result<T> {
         return try {
             block()
         } catch (e: TimeoutCancellationException) {
             Log.e(TAG, "Gemini AI request timed out after ${AI_TIMEOUT_MS / 1000}s", e)
-            Result.failure(Exception("AI request timed out after 60 seconds. Check your internet connection and try again."))
+            Result.failure(Exception("Scan timed out after 60 seconds. Check your internet connection and try again."))
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             Log.e(TAG, "Firebase AI Logic request failed", e)
-            Result.failure(Exception(e.localizedMessage ?: "AI analysis failed. Please check connectivity."))
+            val rawMsg = e.localizedMessage.orEmpty()
+            val friendlyMsg = when {
+                rawMsg.contains("403", ignoreCase = true) || rawMsg.contains("appcheck", ignoreCase = true) ->
+                    "App verification failed (HTTP 403). Make sure you have internet access and the latest app install."
+                rawMsg.contains("429", ignoreCase = true) || rawMsg.contains("quota", ignoreCase = true) ->
+                    "AI service is busy right now. Please wait a moment and try again."
+                rawMsg.contains("Unable to resolve host", ignoreCase = true) ||
+                    rawMsg.contains("network", ignoreCase = true) ||
+                    rawMsg.contains("timeout", ignoreCase = true) ->
+                    "No internet connection or slow network. Check connectivity and try again."
+                rawMsg.isNotBlank() -> rawMsg
+                else -> "AI analysis failed. Please check connectivity and try again."
+            }
+            Result.failure(Exception(friendlyMsg))
         }
     }
 
     private suspend fun decodeScaledBitmap(uri: Uri, maxDim: Int = 1024): Bitmap? =
         withContext(Dispatchers.IO) {
             try {
+                val orientation = context.contentResolver.openInputStream(uri)?.use { stream ->
+                    ExifInterface(stream).getAttributeInt(
+                        ExifInterface.TAG_ORIENTATION,
+                        ExifInterface.ORIENTATION_NORMAL
+                    )
+                } ?: ExifInterface.ORIENTATION_NORMAL
+
                 val boundsOptions = BitmapFactory.Options().apply { inJustDecodeBounds = true }
                 context.contentResolver.openInputStream(uri)?.use { stream ->
                     BitmapFactory.decodeStream(stream, null, boundsOptions)
@@ -426,16 +511,28 @@ class GeminiSoilService(private val context: Context) {
                 while (origW / sampleSize > maxDim * 2 || origH / sampleSize > maxDim * 2) {
                     sampleSize *= 2
                 }
-                val decodeOptions = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+                val decodeOptions = BitmapFactory.Options().apply {
+                    inSampleSize = sampleSize
+                    inPreferredConfig = Bitmap.Config.ARGB_8888
+                }
                 val decoded = context.contentResolver.openInputStream(uri)?.use { stream ->
                     BitmapFactory.decodeStream(stream, null, decodeOptions)
                 } ?: return@withContext null
 
+                val rotationDegrees = when (orientation) {
+                    ExifInterface.ORIENTATION_ROTATE_90 -> 90f
+                    ExifInterface.ORIENTATION_ROTATE_180 -> 180f
+                    ExifInterface.ORIENTATION_ROTATE_270 -> 270f
+                    else -> 0f
+                }
+
                 val scale = minOf(maxDim.toFloat() / decoded.width, maxDim.toFloat() / decoded.height, 1f)
-                if (scale < 1f) {
-                    val targetW = (decoded.width * scale).toInt().coerceAtLeast(1)
-                    val targetH = (decoded.height * scale).toInt().coerceAtLeast(1)
-                    Bitmap.createScaledBitmap(decoded, targetW, targetH, true).also {
+                if (scale < 1f || rotationDegrees != 0f) {
+                    val matrix = Matrix().apply {
+                        if (scale < 1f) postScale(scale, scale)
+                        if (rotationDegrees != 0f) postRotate(rotationDegrees)
+                    }
+                    Bitmap.createBitmap(decoded, 0, 0, decoded.width, decoded.height, matrix, true).also {
                         if (it != decoded) decoded.recycle()
                     }
                 } else {

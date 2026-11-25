@@ -1,14 +1,14 @@
-# SMART SOIL — Vercel Deployment & Local Development Guide
+# FarmerBuddy (SMART SOIL) — Vercel Deployment & Local Development Guide
 
 ## Why Deployment Failed Previously
 The repository initially contained only the Android Gradle project (`app/`, `build.gradle.kts`) with no `package.json`, `dist` web build, `vercel.json`, or `/api` serverless functions. Vercel requires a web project configuration (`package.json`, build output, and Node serverless routes) at the repository root.
 
 ## Added Vercel Web Structure
 - `package.json` — Vite + React + TypeScript + `@google/genai` + `@vercel/node`
-- `vercel.json` — Configures Vite `dist` output, `maxDuration: 30` for `/api/*.ts`, and SPA rewrites that preserve `/api/*` routes
+- `vercel.json` — Configures Vite `dist` output and SPA rewrites while keeping `/api/*` serverless routes intact
 - `api/_shared.ts` — Server-side `GEMINI_API_KEY` check, rate limiting, and image validation
 - `api/analyze-soil.ts`, `api/identify-crop.ts`, `api/plant-health.ts`, `api/npk-extract.ts`, `api/npk-regional.ts`, `api/advisor.ts` — Secure serverless endpoints
-- `src/` — Stitch-styled React + TypeScript frontend with Web Bluetooth (`navigator.bluetooth`) and local-first `localStorage` reports
+- `src/` — FarmerBuddy (SMART SOIL) React + TypeScript frontend with Web Bluetooth (`navigator.bluetooth`) and local-first `localStorage` reports
 
 ## Required Environment Variable in Vercel
 1. Open your project in **Vercel Dashboard → Settings → Environment Variables**.

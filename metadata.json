@@ -1,6 +1,6 @@
 {
-  "name": "Smart Soil",
-  "description": "AI-Assisted Soil Monitoring System with ESP32 BLE sensors, Gemini vision scanning, NPK analysis, and soil health advisor.",
+  "name": "FarmerBuddy",
+  "description": "AI-powered soil monitoring and agricultural advisory system.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

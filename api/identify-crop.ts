@@ -1,11 +1,23 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { GEMINI_MODEL, Type, parseJsonSafe, parseValidatedImage, requirePostAndClient } from './_shared.js';
+import {
+  GEMINI_MODEL,
+  Type,
+  extractResponseText,
+  handleGeminiError,
+  normalizeString,
+  parseJsonSafe,
+  parseRequestBody,
+  parseValidatedImage,
+  requirePostAndClient,
+} from './_shared.js';
+
+const VALID_STAGES = new Set(['Seedling', 'Vegetative', 'Flowering / Reproductive', 'Maturity']);
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ai = requirePostAndClient(req, res);
   if (!ai) return;
 
-  const { imageBase64, mimeType } = (req.body ?? {}) as { imageBase64?: unknown; mimeType?: unknown };
+  const { imageBase64, mimeType } = parseRequestBody(req);
   const img = parseValidatedImage(imageBase64, mimeType);
   if ('error' in img) {
     return res.status(400).json({ error: img.error });
@@ -21,9 +33,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             { inlineData: { data: img.data, mimeType: img.mimeType } },
             {
               text: [
-                'Identify the crop in this photo for SMART SOIL.',
+                'Identify the crop in this photo for FarmerBuddy (SMART SOIL) in simple, clear language.',
                 'Explain visible identifying features (leaf shape, venation, stem, panicle/fruit).',
-                'State confidence level and uncertainty/look-alikes clearly so the user can confirm before saving.',
+                'State confidence level (High, Moderate, or Low) and uncertainty/look-alikes clearly so the farmer can confirm before saving.',
+                'Use suggestedGrowthStage strictly from: Seedling, Vegetative, Flowering / Reproductive, Maturity.',
               ].join('\n'),
             },
           ],
@@ -51,9 +64,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       },
     });
 
-    return res.status(200).json(parseJsonSafe(response.text));
+    const parsed = parseJsonSafe(extractResponseText(response));
+    const possibleCropName = normalizeString(parsed.possibleCropName, '');
+    if (!possibleCropName) {
+      throw new Error('Incomplete crop identification payload from Gemini.');
+    }
+
+    const rawStage = normalizeString(parsed.suggestedGrowthStage, 'Vegetative');
+    const suggestedGrowthStage = VALID_STAGES.has(rawStage) ? rawStage : 'Vegetative';
+
+    return res.status(200).json({
+      possibleCropName,
+      confidenceLevel: normalizeString(parsed.confidenceLevel, 'Moderate'),
+      identifyingFeatures: normalizeString(parsed.identifyingFeatures, 'Visible leaf and stem pattern evaluated.'),
+      uncertaintyNotes: normalizeString(
+        parsed.uncertaintyNotes,
+        'Visual identification may confuse similar crops. Please review and confirm before saving.'
+      ),
+      suggestedGrowthStage,
+    });
   } catch (err) {
-    console.error('Crop ID failed:', err instanceof Error ? err.message : 'Unknown error');
-    return res.status(502).json({ error: 'Unable to identify crop right now. Please try again.' });
+    return handleGeminiError(
+      res,
+      'Crop ID',
+      err,
+      'Unable to identify crop right now. Please try a clearer leaf or plant photo.'
+    );
   }
 }

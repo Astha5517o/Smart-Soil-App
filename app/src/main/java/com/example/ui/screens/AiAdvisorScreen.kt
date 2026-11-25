@@ -90,12 +90,17 @@ fun AiAdvisorScreen(
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(
+                text = "FARMERBUDDY · SMART SOIL",
+                style = MaterialTheme.typography.labelSmall,
+                color = LightPrimary
+            )
+            Text(
                 text = "AI Soil Advisor",
                 style = MaterialTheme.typography.headlineLarge,
                 color = LightOnSurface
             )
             Text(
-                text = "Scientifically cautious recommendations using your ESP32 readings, crop profile, scans, and NPK data.",
+                text = "Simple soil & crop steps from your sensors and scans.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = LightOnSurfaceVariant
             )
@@ -179,7 +184,7 @@ fun AiAdvisorScreen(
             )
             Spacer(modifier = Modifier.height(12.dp))
             ClayPrimaryButton(
-                text = "Generate Guided Advice",
+                text = "Get Soil Advice",
                 icon = Icons.Default.Psychology,
                 onClick = { onGenerateAdvice(selectedTopic, questionText) },
                 modifier = Modifier.fillMaxWidth(),
@@ -202,14 +207,17 @@ fun AiAdvisorScreen(
             is AsyncUiState.Idle -> {
                 ClayCard {
                     Text(
-                        text = "Tap \"Generate Guided Advice\" for structured recommendations with evidence and explicit uncertainty.",
+                        text = "Tap \"Get Soil Advice\" for clear recommendations with evidence and explicit uncertainty.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = LightOnSurfaceVariant
                     )
                 }
             }
-            is AsyncUiState.Loading -> LoadingAnalysisCard("Consulting Gemini Agronomy Advisor...")
-            is AsyncUiState.Error -> ErrorAnalysisCard(uiState.message)
+            is AsyncUiState.Loading -> LoadingAnalysisCard("Analysing...")
+            is AsyncUiState.Error -> ErrorAnalysisCard(
+                message = uiState.message,
+                onTryAgain = { onGenerateAdvice(selectedTopic, questionText) }
+            )
             is AsyncUiState.Success -> {
                 val plan = uiState.data
                 var saved by remember(plan) { mutableStateOf(false) }

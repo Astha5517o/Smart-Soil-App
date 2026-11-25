@@ -13,6 +13,7 @@ interface HomeDashboardProps {
   onQuickScanSoil: () => void;
   onQuickIdentifyCrop: () => void;
   onQuickPlantHealth: () => void;
+  onQuickNpkReport: () => void;
   onOpenAdvisor: () => void;
   onSaveSnapshot: () => void;
 }
@@ -29,6 +30,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   onQuickScanSoil,
   onQuickIdentifyCrop,
   onQuickPlantHealth,
+  onQuickNpkReport,
   onOpenAdvisor,
   onSaveSnapshot,
 }) => {
@@ -36,65 +38,137 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   const isConnected = bleStatus === 'connected';
 
   const mVal = reading?.moisturePercent ?? null;
-  const mLow = mVal !== null && mVal < settings.minMoisture;
-  const mHigh = mVal !== null && mVal > settings.maxMoisture;
-  const mPill = mVal === null ? 'Unavailable' : mLow ? 'Low' : mHigh ? 'High' : 'Suitable';
-  const mWarn = mVal === null || mLow || mHigh;
+  const dryCutoff = Math.max(5, settings.minMoisture - 6);
+  const moistureStatus: {
+    label: string;
+    hindi: string;
+    badgeClass: string;
+    barClass: string;
+    cardTint: string;
+    hint: string;
+  } = (() => {
+    if (mVal === null) {
+      return {
+        label: 'Not connected',
+        hindi: 'सेंसर जुड़ा नहीं है',
+        badgeClass: 'bg-light-surface-container text-light-on-surface-variant',
+        barClass: 'bg-light-outline',
+        cardTint: 'border border-light-outline-variant/60',
+        hint: 'Connect your ESP32 sensor or tap Demo to preview.',
+      };
+    }
+    if (mVal < dryCutoff) {
+      return {
+        label: 'Dry',
+        hindi: 'सूखी मिट्टी',
+        badgeClass: 'bg-light-error-container text-light-on-error-container',
+        barClass: 'bg-light-error',
+        cardTint: 'border-2 border-light-error/35',
+        hint: 'Dry — check plot before watering.',
+      };
+    }
+    if (mVal < settings.minMoisture) {
+      return {
+        label: 'Moderate',
+        hindi: 'हल्की नमी',
+        badgeClass: 'bg-warning-container text-on-warning-container',
+        barClass: 'bg-warning',
+        cardTint: 'border-2 border-warning/35',
+        hint: 'Getting dry — watch moisture closely.',
+      };
+    }
+    if (mVal > settings.maxMoisture) {
+      return {
+        label: 'Moderate',
+        hindi: 'अधिक नमी',
+        badgeClass: 'bg-warning-container text-on-warning-container',
+        barClass: 'bg-warning',
+        cardTint: 'border-2 border-warning/35',
+        hint: 'Very wet — pause watering and check drainage.',
+      };
+    }
+    return {
+      label: 'Moist',
+      hindi: 'अच्छी नमी',
+      badgeClass: 'bg-success-container text-on-success-container',
+      barClass: 'bg-success',
+      cardTint: 'border-2 border-success/30',
+      hint: `Good moisture for ${settings.cropName}.`,
+    };
+  })();
 
   const phVal = reading?.ph ?? null;
   const phLow = phVal !== null && phVal < settings.minPh;
   const phHigh = phVal !== null && phVal > settings.maxPh;
-  const phPill = phVal === null ? 'Unavailable' : phLow ? 'Acidic' : phHigh ? 'Alkaline' : 'Near Neutral';
-  const phWarn = phVal === null || phLow || phHigh;
-  const phMarkerPct = phVal !== null ? Math.max(4, Math.min(94, ((phVal - 3.5) / 7.0) * 100)) : 50;
+  const phStatusLabel =
+    phVal === null
+      ? isLiveMode && !isConnected
+        ? 'Not connected'
+        : 'Unavailable'
+      : phLow
+      ? 'Acidic'
+      : phHigh
+      ? 'Alkaline'
+      : 'Near Neutral';
+  const phWarn = phLow || phHigh;
 
   const tVal = reading?.temperatureC ?? null;
   const tWarm = tVal !== null && tVal > 30;
-  const tPill = tVal === null ? 'Unavailable' : tWarm ? 'Warm' : 'Optimal';
+  const tCool = tVal !== null && tVal < 15;
+  const tStatusLabel =
+    tVal === null
+      ? isLiveMode && !isConnected
+        ? 'Not connected'
+        : 'Unavailable'
+      : tWarm
+      ? 'Warm'
+      : tCool
+      ? 'Cool'
+      : 'Optimal';
 
-  const adviceText = (() => {
-    if (!reading) {
-      return 'Connect your ESP32 sensor node via Web Bluetooth for live moisture, pH, and temperature guidance—or switch to Demo Mode for exhibition preview.';
-    }
-    const prefix = reading.isDemo ? '[DEMO] ' : '';
-    if (mLow && phHigh) {
-      return `${prefix}Soil moisture (${mVal}%) is below your ${settings.cropName} threshold and pH (${phVal}) is above its preferred range. Check another area of the plot and review a reliable soil test before choosing an amendment.`;
-    }
-    if (mLow) {
-      return `${prefix}Soil moisture (${mVal}%) is below the ${settings.minMoisture}% target for ${settings.cropName}. Check another spot in the plot before scheduling irrigation.`;
-    }
-    if (phLow || phHigh) {
-      return `${prefix}Soil pH (${phVal}) is outside ${settings.cropName}'s preferred ${settings.minPh}–${settings.maxPh} range. Never amend from a single reading alone—confirm with a laboratory soil test.`;
-    }
-    return `${prefix}Moisture (${mVal ?? '--'}%) and pH (${phVal ?? '--'}) are within your ${settings.cropName} crop's preferred range. Keep monitoring morning probe readings before scheduling irrigation.`;
-  })();
+  const lastUpdatedLabel = reading
+    ? new Date(reading.timestampMs).toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      })
+    : 'Not connected';
+
+  const connectionLabel =
+    isLiveMode && isConnected
+      ? 'ESP32 Live'
+      : isLiveMode
+      ? 'Not connected'
+      : 'Demo Preview';
 
   return (
     <div className="flex flex-col flex-1">
-      {/* Top App Header matching Stitch HomeDashboard.html */}
-      <header className="sticky top-0 z-20 bg-light-surface border-b border-light-outline-variant px-page-margin py-gutter-sm">
-        <div className="flex flex-wrap items-center justify-between gap-gutter-sm">
+      {/* FarmerBuddy / SMART SOIL Header */}
+      <header className="sticky top-0 z-20 bg-light-surface/95 backdrop-blur border-b border-light-outline-variant/60 px-page-margin py-gutter-sm">
+        <div className="flex items-center justify-between gap-gutter-sm">
           <button
             type="button"
             onClick={onOpenBleModal}
             className="flex items-center gap-gutter-sm text-left hover:opacity-90 transition-opacity"
           >
-            <div className="w-10 h-10 rounded bg-light-primary text-light-on-primary clay-btn-primary flex items-center justify-center shrink-0">
-              <span className="material-symbols-outlined text-[22px]" aria-hidden="true">compost</span>
+            <div className="w-11 h-11 rounded bg-light-primary text-light-on-primary clay-btn-primary flex items-center justify-center shrink-0">
+              <span className="material-symbols-outlined text-[24px]" aria-hidden="true">eco</span>
             </div>
             <div>
-              <h1 className="font-headline text-title-lg text-light-on-surface leading-tight">SMART SOIL</h1>
-              <p className="font-body text-body-sm text-light-on-surface-variant">
-                Crop: <strong className="text-light-on-surface">{settings.cropName}</strong>
+              <h1 className="font-headline text-title-lg text-light-on-surface leading-tight">
+                FarmerBuddy
+              </h1>
+              <p className="font-label text-label-sm tracking-wider text-light-primary uppercase">
+                SMART SOIL · {settings.cropName}
               </p>
             </div>
           </button>
 
-          <div className="flex items-center gap-gutter-xs flex-wrap justify-end">
+          <div className="flex items-center gap-1.5">
             <button
               type="button"
               onClick={onOpenBleModal}
-              className={`inline-flex items-center gap-gutter-xs px-gutter-sm py-gutter-xs rounded-full ${
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full min-h-[36px] ${
                 isConnected
                   ? 'bg-success-container text-on-success-container'
                   : bleStatus === 'unsupported'
@@ -103,110 +177,86 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
               }`}
             >
               <span
-                className={`w-2 h-2 rounded-full ${
+                className={`w-2.5 h-2.5 rounded-full ${
                   isConnected ? 'bg-success' : bleStatus === 'unsupported' ? 'bg-light-error' : 'bg-light-outline'
                 }`}
                 aria-hidden="true"
               />
               <span className="font-label text-label-sm">
-                {isConnected ? 'ESP32 Connected' : bleStatus === 'unsupported' ? 'BLE Unsupported' : 'ESP32 Offline'}
+                {isConnected ? 'ESP32 Live' : bleStatus === 'unsupported' ? 'No BLE' : 'ESP32 Off'}
               </span>
             </button>
 
             <span
               role="status"
-              className={`inline-flex items-center gap-gutter-xs px-gutter-sm py-gutter-xs rounded-full ${
+              className={`inline-flex items-center px-2.5 py-1.5 rounded-full font-label text-label-sm ${
                 isLiveMode && isConnected
                   ? 'bg-success-container text-on-success-container'
                   : 'bg-warning-container text-on-warning-container'
               }`}
             >
-              <span className="font-label text-label-sm">{isLiveMode ? 'LIVE DATA' : 'DEMO DATA'}</span>
+              {isLiveMode && isConnected ? 'LIVE' : isLiveMode ? 'OFFLINE' : 'DEMO'}
             </span>
           </div>
         </div>
 
-        {/* Exhibition Demo & BLE Switcher */}
-        <div className="mt-gutter-sm flex items-center gap-gutter-xs overflow-x-auto pb-gutter-xs" role="group" aria-label="Exhibition display mode">
+        {/* Simple Mode Switch + Calibration Button */}
+        <div className="mt-gutter-sm flex items-center gap-1.5" role="group" aria-label="Sensor display mode">
           <button
             type="button"
             onClick={() => {
               onSelectMode('live');
               if (!isConnected) onOpenBleModal();
             }}
-            className={`px-gutter-sm py-1 rounded-full font-label text-label-sm shrink-0 ${
+            className={`flex-1 min-h-[40px] py-1.5 px-2 rounded-full font-label text-label-sm transition-colors ${
               displayMode === 'live'
                 ? 'bg-light-primary text-light-on-primary clay-btn-primary'
                 : 'bg-light-surface-container text-light-on-surface-variant'
             }`}
           >
-            {isConnected ? 'Live ESP32' : 'Live ESP32 (Connect)'}
+            Live ESP32
           </button>
-
           <button
             type="button"
             onClick={() => onSelectMode('demo_normal')}
-            className={`px-gutter-sm py-1 rounded-full font-label text-label-sm shrink-0 ${
+            className={`flex-1 min-h-[40px] py-1.5 px-2 rounded-full font-label text-label-sm transition-colors ${
               displayMode === 'demo_normal'
                 ? 'bg-light-primary text-light-on-primary clay-btn-primary'
                 : 'bg-light-surface-container text-light-on-surface-variant'
             }`}
           >
-            Demo Mode (Normal)
+            Demo
           </button>
-
           <button
             type="button"
             onClick={() => onSelectMode('demo_alert')}
-            className={`px-gutter-sm py-1 rounded-full font-label text-label-sm shrink-0 ${
+            className={`flex-1 min-h-[40px] py-1.5 px-2 rounded-full font-label text-label-sm transition-colors ${
               displayMode === 'demo_alert'
                 ? 'bg-light-primary text-light-on-primary clay-btn-primary'
                 : 'bg-light-surface-container text-light-on-surface-variant'
             }`}
           >
-            Demo Mode (Low Moisture &amp; High pH Alert)
+            Dry Alert
           </button>
-
           <button
             type="button"
             onClick={onOpenBleModal}
-            className="px-gutter-sm py-1 rounded-full bg-light-surface-container text-light-on-surface-variant font-label text-label-sm shrink-0 inline-flex items-center gap-1"
+            aria-label="Sensor and crop settings"
+            className="w-10 h-10 rounded-full bg-light-surface-container text-light-on-surface flex items-center justify-center shrink-0"
           >
-            <span className="material-symbols-outlined text-[15px]" aria-hidden="true">tune</span>
-            BLE &amp; Thresholds
+            <span className="material-symbols-outlined text-[20px]" aria-hidden="true">tune</span>
           </button>
         </div>
       </header>
 
       <main className="flex-1 px-page-margin py-gutter-md pb-28 flex flex-col gap-gutter-md">
-        {/* Main Heading + START SCAN CTA */}
-        <div className="flex flex-wrap items-center justify-between gap-gutter-sm">
-          <div className="flex flex-wrap items-baseline gap-gutter-sm">
-            <h2 className="font-headline text-headline-md text-light-on-surface">Your Soil Health at a Glance</h2>
-            {!isLiveMode && (
-              <span className="px-gutter-sm py-0.5 rounded-full bg-warning-container text-on-warning-container font-label text-label-sm">
-                Illustrative Example Readings (Demo)
-              </span>
-            )}
-          </div>
-
-          <button
-            type="button"
-            onClick={onStartScan}
-            className="inline-flex items-center gap-2 min-h-[48px] px-5 rounded-full bg-light-primary text-light-on-primary clay-btn-primary font-label text-label-lg hover:opacity-95 transition-opacity"
-          >
-            <span className="material-symbols-outlined text-[20px]" aria-hidden="true">photo_camera</span>
-            START SCAN
-          </button>
-        </div>
-
-        {/* Honest Disconnected Warning in Live Mode */}
+        {/* Honest Disconnected Banner in Live Mode */}
         {isLiveMode && !isConnected && (
           <div className="bg-warning-container text-on-warning-container rounded-lg p-gutter-md flex flex-wrap items-center justify-between gap-gutter-sm">
             <div>
-              <strong className="block font-headline text-title-md">ESP32 Not Connected — Live Readings Unavailable</strong>
-              <p className="font-body text-body-sm mt-0.5">
-                {bleError || 'Connect your ESP32 DevKit V1 over Web Bluetooth to stream live moisture, pH, and temperature packets, or switch to Demo Mode.'}
+              <strong className="block font-headline text-title-md">Sensor Not Connected</strong>
+              <p className="font-body text-body-sm">
+                {bleError || 'Connect your ESP32 via Bluetooth or switch to Demo.'}
               </p>
             </div>
             <button
@@ -215,280 +265,215 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
               className="min-h-[44px] px-4 rounded-full bg-light-primary text-light-on-primary font-label text-label-md inline-flex items-center gap-1.5"
             >
               <span className="material-symbols-outlined text-[18px]" aria-hidden="true">bluetooth</span>
-              Connect ESP32
+              Connect
             </button>
           </div>
         )}
 
-        {/* Three Prominent Sensor Cards */}
-        <section aria-label="ESP32 sensor readings" className="grid grid-cols-1 md:grid-cols-3 gap-gutter-md items-stretch">
-          {/* 1. Moisture Card */}
-          <article className="h-full bg-light-surface-container-lowest rounded-lg clay-card p-gutter-md flex flex-col justify-between gap-gutter-sm">
-            <div className="flex items-center justify-between">
-              <span className="font-headline text-title-lg text-light-on-surface flex items-center gap-gutter-xs">
-                <span className="material-symbols-outlined text-light-primary text-[22px]" aria-hidden="true">water_drop</span>
-                Moisture
-              </span>
-              <span
-                className={`px-gutter-sm py-gutter-xs rounded-full font-label text-label-sm ${
-                  mWarn ? 'bg-warning-container text-on-warning-container' : 'bg-success-container text-on-success-container'
-                }`}
-              >
-                {mPill}
-              </span>
-            </div>
-
-            <div>
-              <div className="flex items-baseline gap-2">
-                <span className="font-mono text-display-lg text-light-on-surface tabular-nums">
-                  {mVal !== null ? `${mVal}%` : '--%'}
-                </span>
-                <span className="font-body text-body-sm text-light-on-surface-variant">
-                  Target: {settings.minMoisture}–{settings.maxMoisture}%
-                </span>
+        {/* LARGE SOIL MOISTURE CARD (Understandable in 3 seconds) */}
+        <section
+          aria-label="Soil Moisture Status"
+          className={`bg-light-surface-container-lowest rounded-lg clay-card p-gutter-lg flex flex-col gap-3 ${moistureStatus.cardTint}`}
+        >
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex items-center gap-2.5">
+              <div className="w-12 h-12 rounded bg-light-secondary-container text-light-on-secondary-container flex items-center justify-center shrink-0">
+                <span className="material-symbols-outlined text-[28px]" aria-hidden="true">water_drop</span>
               </div>
-              {reading?.moistureRaw !== null && reading?.moistureRaw !== undefined && (
-                <span className="font-mono text-[11px] text-light-on-surface-variant block">
-                  HW-390 Raw ADC: {reading.moistureRaw}
-                </span>
-              )}
+              <div>
+                <h2 className="font-headline text-title-lg text-light-on-surface">Soil Moisture</h2>
+                <p className="font-body text-body-sm text-light-on-surface-variant">
+                  {moistureStatus.hindi} · Target {settings.minMoisture}–{settings.maxMoisture}%
+                </p>
+              </div>
             </div>
 
-            <div className="w-full h-3.5 rounded-full bg-light-surface-container clay-inset overflow-hidden">
-              <div
-                className={`h-full rounded-full transition-all duration-500 ${mLow ? 'bg-warning' : 'bg-light-primary'}`}
-                style={{ width: `${mVal ?? 0}%` }}
-              />
-            </div>
+            <span className={`px-3.5 py-1.5 rounded-full font-label text-label-md shrink-0 ${moistureStatus.badgeClass}`}>
+              {moistureStatus.label}
+            </span>
+          </div>
 
+          <div className="flex items-baseline justify-between gap-2 flex-wrap">
+            <span className="font-mono text-[44px] leading-none font-bold text-light-on-surface tabular-nums">
+              {mVal !== null ? `${mVal}%` : 'Not connected'}
+            </span>
+            {reading && (
+              <button
+                type="button"
+                onClick={onSaveSnapshot}
+                className="min-h-[40px] px-3.5 rounded-full border border-light-outline-variant bg-light-surface-container-low text-light-on-surface font-label text-label-sm inline-flex items-center gap-1.5 hover:bg-light-surface-container"
+              >
+                <span className="material-symbols-outlined text-[17px]" aria-hidden="true">save</span>
+                Save Reading
+              </button>
+            )}
+          </div>
+
+          {/* Red / Yellow / Green Visual Progress Scale */}
+          <div className="w-full h-4 rounded-full bg-light-surface-container clay-inset overflow-hidden">
             <div
-              className={`p-gutter-sm rounded font-body text-body-sm ${
-                mWarn && mVal !== null
-                  ? 'bg-warning-container text-on-warning-container'
-                  : 'bg-light-surface-container-low text-light-on-surface-variant'
-              }`}
-            >
-              <strong className="block text-light-on-surface">
-                {mVal === null
-                  ? 'Sensor unavailable'
-                  : mLow
-                  ? `Alert: Below ${settings.minMoisture}% threshold`
-                  : mHigh
-                  ? `Alert: Above ${settings.maxMoisture}% threshold`
-                  : 'Within crop range'}
-              </strong>
-              <span>
-                {mVal === null
-                  ? 'Connect ESP32 or check HW-390 wiring.'
-                  : mLow
-                  ? 'Next: Check another plot spot & plan irrigation.'
-                  : mHigh
-                  ? 'Next: Pause irrigation & check field drainage.'
-                  : 'Next: Check again tomorrow morning.'}
-              </span>
-            </div>
-          </article>
+              className={`h-full rounded-full transition-all duration-500 ${moistureStatus.barClass}`}
+              style={{ width: `${mVal ?? 0}%` }}
+            />
+          </div>
 
-          {/* 2. Soil pH Card */}
-          <article className="h-full bg-light-surface-container-lowest rounded-lg clay-card p-gutter-md flex flex-col justify-between gap-gutter-sm">
-            <div className="flex items-center justify-between">
-              <span className="font-headline text-title-lg text-light-on-surface flex items-center gap-gutter-xs">
-                <span className="material-symbols-outlined text-soil text-[22px]" aria-hidden="true">science</span>
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-light-outline-variant/40 text-body-sm">
+            <span className="font-body text-light-on-surface">{moistureStatus.hint}</span>
+            <span className="font-mono text-[11px] text-light-on-surface-variant">
+              {connectionLabel} · Updated {lastUpdatedLabel}
+            </span>
+          </div>
+        </section>
+
+        {/* SMALLER pH & TEMPERATURE CARDS */}
+        <section aria-label="Soil pH and Temperature" className="grid grid-cols-2 gap-gutter-sm">
+          {/* Soil pH */}
+          <article className="bg-light-surface-container-lowest rounded-lg clay-card p-gutter-md flex flex-col justify-between gap-2">
+            <div className="flex items-center justify-between gap-1">
+              <span className="font-headline text-title-md text-light-on-surface flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-soil text-[20px]" aria-hidden="true">science</span>
                 Soil pH
               </span>
               <span
-                className={`px-gutter-sm py-gutter-xs rounded-full font-label text-label-sm ${
-                  phWarn ? 'bg-warning-container text-on-warning-container' : 'bg-success-container text-on-success-container'
-                }`}
-              >
-                {phPill}
-              </span>
-            </div>
-
-            <div className="flex items-baseline gap-2">
-              <span className="font-mono text-display-lg text-light-on-surface tabular-nums">
-                {phVal !== null ? phVal.toFixed(1) : '--'}
-              </span>
-              <span className="font-body text-body-sm text-light-on-surface-variant">
-                Preferred: {settings.minPh}–{settings.maxPh}
-              </span>
-            </div>
-
-            <div className="flex flex-col gap-1">
-              <div className="relative w-full h-3.5 rounded-full overflow-hidden flex">
-                <div className="flex-1 bg-warning/70" />
-                <div className="flex-1 bg-success/75" />
-                <div className="flex-1 bg-soil/70" />
-                {phVal !== null && (
-                  <div
-                    className="absolute top-0 bottom-0 w-2 bg-light-on-surface rounded-full border border-light-surface-container-lowest transition-all duration-500"
-                    style={{ left: `${phMarkerPct}%` }}
-                  />
-                )}
-              </div>
-              <div className="flex justify-between font-mono text-[11px] text-light-on-surface-variant tabular-nums">
-                <span>Acidic</span>
-                <span>Neutral (7.0)</span>
-                <span>Alkaline</span>
-              </div>
-            </div>
-
-            <div
-              className={`p-gutter-sm rounded font-body text-body-sm ${
-                phWarn && phVal !== null
-                  ? 'bg-warning-container text-on-warning-container'
-                  : 'bg-light-surface-container-low text-light-on-surface-variant'
-              }`}
-            >
-              <strong className="block text-light-on-surface">
-                {phVal === null
-                  ? 'pH probe unavailable'
-                  : phLow || phHigh
-                  ? `Alert: Outside ${settings.minPh}–${settings.maxPh} range`
-                  : `Balanced for ${settings.cropName.toLowerCase()}`}
-              </strong>
-              <span>
-                {phVal === null
-                  ? 'Verify ADIY BNC calibration & 3.3V divider first.'
-                  : phLow || phHigh
-                  ? 'Next: Review a soil test before choosing an amendment.'
-                  : 'Next: No pH amendment needed today.'}
-              </span>
-            </div>
-          </article>
-
-          {/* 3. Temperature Card */}
-          <article className="h-full bg-light-surface-container-lowest rounded-lg clay-card p-gutter-md flex flex-col justify-between gap-gutter-sm">
-            <div className="flex items-center justify-between">
-              <span className="font-headline text-title-lg text-light-on-surface flex items-center gap-gutter-xs">
-                <span className="material-symbols-outlined text-warning text-[22px]" aria-hidden="true">thermostat</span>
-                Temperature
-              </span>
-              <span
-                className={`px-gutter-sm py-gutter-xs rounded-full font-label text-label-sm ${
-                  tVal === null
+                className={`px-2 py-0.5 rounded-full font-label text-label-sm ${
+                  phVal === null
                     ? 'bg-light-surface-container text-light-on-surface-variant'
-                    : tWarm
+                    : phWarn
                     ? 'bg-warning-container text-on-warning-container'
                     : 'bg-success-container text-on-success-container'
                 }`}
               >
-                {tPill}
+                {phStatusLabel}
               </span>
             </div>
 
-            <div className="flex items-baseline gap-2">
-              <span className="font-mono text-display-lg text-light-on-surface tabular-nums">
-                {tVal !== null ? `${tVal.toFixed(1)}°C` : '--°C'}
-              </span>
-              <span className="font-body text-body-sm text-light-on-surface-variant">DS18B20 Probe</span>
+            <div className="font-mono text-[26px] leading-tight font-bold text-light-on-surface tabular-nums">
+              {phVal !== null ? phVal.toFixed(1) : isLiveMode && !isConnected ? 'Not connected' : 'Unavailable'}
             </div>
 
-            <div className="w-full h-3.5 rounded-full bg-light-surface-container clay-inset overflow-hidden">
-              <div
-                className="h-full rounded-full bg-soil transition-all duration-500"
-                style={{ width: `${tVal !== null ? Math.min(100, Math.max(8, (tVal / 45) * 100)) : 0}%` }}
-              />
-            </div>
+            <p className="font-body text-body-sm text-light-on-surface-variant">
+              Ideal {settings.minPh}–{settings.maxPh}
+            </p>
+          </article>
 
-            <div className="p-gutter-sm rounded bg-light-surface-container-low text-light-on-surface-variant font-body text-body-sm">
-              <strong className="text-light-on-surface block">Root-zone warmth</strong>
-              <span>
-                {tVal === null
-                  ? 'Connect DS18B20 with 4.7kΩ pull-up resistor on ESP32.'
-                  : tWarm
-                  ? 'Higher surface warmth; organic mulch can help shade roots.'
-                  : 'Supports steady root activity without midday heat stress.'}
+          {/* Soil Temperature */}
+          <article className="bg-light-surface-container-lowest rounded-lg clay-card p-gutter-md flex flex-col justify-between gap-2">
+            <div className="flex items-center justify-between gap-1">
+              <span className="font-headline text-title-md text-light-on-surface flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-warning text-[20px]" aria-hidden="true">thermostat</span>
+                Temp
+              </span>
+              <span
+                className={`px-2 py-0.5 rounded-full font-label text-label-sm ${
+                  tVal === null
+                    ? 'bg-light-surface-container text-light-on-surface-variant'
+                    : tWarm || tCool
+                    ? 'bg-warning-container text-on-warning-container'
+                    : 'bg-success-container text-on-success-container'
+                }`}
+              >
+                {tStatusLabel}
               </span>
             </div>
+
+            <div className="font-mono text-[26px] leading-tight font-bold text-light-on-surface tabular-nums">
+              {tVal !== null ? `${tVal.toFixed(1)}°C` : isLiveMode && !isConnected ? 'Not connected' : 'Unavailable'}
+            </div>
+
+            <p className="font-body text-body-sm text-light-on-surface-variant">
+              Root zone · तापमान
+            </p>
           </article>
         </section>
 
-        {reading && (
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={onSaveSnapshot}
-              className="min-h-[44px] px-4 rounded-full border border-light-outline-variant bg-light-surface-container-lowest text-light-on-surface font-label text-label-md inline-flex items-center gap-2 hover:bg-light-surface-container-low"
-            >
-              <span className="material-symbols-outlined text-[18px]" aria-hidden="true">save</span>
-              {reading.isDemo ? 'Save Demo Snapshot to Reports' : 'Save Live Reading to Reports'}
-            </button>
-          </div>
-        )}
-
-        {/* Prominent "Today's Soil Advice" Section */}
-        <section
-          aria-label="Today's Soil Advice"
-          className="bg-light-primary-container text-light-on-primary-container rounded-lg clay-btn-primary p-gutter-md flex flex-col md:flex-row md:items-center justify-between gap-gutter-md"
+        {/* PROMINENT PRIMARY CTA: SCAN YOUR SOIL */}
+        <button
+          type="button"
+          onClick={onStartScan}
+          className="w-full min-h-[56px] px-6 rounded-full bg-light-primary text-light-on-primary clay-btn-primary font-headline text-title-lg flex items-center justify-center gap-3 hover:opacity-95 transition-opacity"
         >
-          <div className="flex items-start gap-gutter-sm">
-            <span className="material-symbols-outlined text-[26px] shrink-0 mt-0.5" aria-hidden="true">lightbulb</span>
-            <div>
-              <span className="font-label text-label-sm uppercase tracking-wide opacity-90 block">
-                Today&apos;s Soil Advice
-              </span>
-              <p className="font-body text-body-md font-medium mt-0.5">{adviceText}</p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={onOpenAdvisor}
-            className="shrink-0 inline-flex items-center justify-center gap-gutter-xs min-h-[44px] px-gutter-md rounded-full bg-light-surface-container-lowest text-light-primary font-label text-label-lg"
-          >
-            Open AI Advisor
-            <span className="material-symbols-outlined text-[18px]" aria-hidden="true">arrow_forward</span>
-          </button>
-        </section>
+          <span className="material-symbols-outlined text-[26px]" aria-hidden="true">photo_camera</span>
+          SCAN YOUR SOIL
+        </button>
 
-        {/* Four Quick-Action Cards */}
-        <section aria-label="Quick actions" className="grid grid-cols-2 md:grid-cols-4 gap-gutter-sm">
+        {/* FOUR SIMPLE FEATURE CARDS */}
+        <section aria-label="Scanner tools" className="grid grid-cols-2 md:grid-cols-4 gap-gutter-sm">
           <button
             type="button"
             onClick={onQuickScanSoil}
-            className="text-left bg-light-surface-container-lowest rounded-lg clay-card p-gutter-md hover:ring-2 hover:ring-light-primary transition-all flex flex-col items-start gap-gutter-xs"
+            className="text-left min-h-[112px] bg-light-surface-container-lowest rounded-lg clay-card p-gutter-md hover:ring-2 hover:ring-light-primary transition-all flex flex-col justify-between gap-2"
           >
-            <span className="w-10 h-10 rounded bg-soil-container text-on-soil-container flex items-center justify-center">
-              <span className="material-symbols-outlined text-[22px]" aria-hidden="true">terrain</span>
+            <span className="w-11 h-11 rounded bg-soil-container text-on-soil-container flex items-center justify-center">
+              <span className="material-symbols-outlined text-[24px]" aria-hidden="true">terrain</span>
             </span>
-            <span className="font-headline text-title-lg text-light-on-surface">Scan Soil</span>
-            <span className="font-body text-body-sm text-light-on-surface-variant">Visual soil check</span>
+            <div>
+              <span className="block font-headline text-title-md text-light-on-surface">Soil Scan</span>
+              <span className="block font-body text-body-sm text-light-on-surface-variant">Check soil type</span>
+            </div>
           </button>
 
           <button
             type="button"
             onClick={onQuickIdentifyCrop}
-            className="text-left bg-light-surface-container-lowest rounded-lg clay-card p-gutter-md hover:ring-2 hover:ring-light-primary transition-all flex flex-col items-start gap-gutter-xs"
+            className="text-left min-h-[112px] bg-light-surface-container-lowest rounded-lg clay-card p-gutter-md hover:ring-2 hover:ring-light-primary transition-all flex flex-col justify-between gap-2"
           >
-            <span className="w-10 h-10 rounded bg-light-secondary-container text-light-on-secondary-container flex items-center justify-center">
-              <span className="material-symbols-outlined text-[22px]" aria-hidden="true">eco</span>
+            <span className="w-11 h-11 rounded bg-light-secondary-container text-light-on-secondary-container flex items-center justify-center">
+              <span className="material-symbols-outlined text-[24px]" aria-hidden="true">eco</span>
             </span>
-            <span className="font-headline text-title-lg text-light-on-surface">Identify Crop</span>
-            <span className="font-body text-body-sm text-light-on-surface-variant">Confirm crop &amp; stage</span>
+            <div>
+              <span className="block font-headline text-title-md text-light-on-surface">Identify Crop</span>
+              <span className="block font-body text-body-sm text-light-on-surface-variant">Confirm plant</span>
+            </div>
           </button>
 
           <button
             type="button"
             onClick={onQuickPlantHealth}
-            className="text-left bg-light-surface-container-lowest rounded-lg clay-card p-gutter-md hover:ring-2 hover:ring-light-primary transition-all flex flex-col items-start gap-gutter-xs"
+            className="text-left min-h-[112px] bg-light-surface-container-lowest rounded-lg clay-card p-gutter-md hover:ring-2 hover:ring-light-primary transition-all flex flex-col justify-between gap-2"
           >
-            <span className="w-10 h-10 rounded bg-warning-container text-on-warning-container flex items-center justify-center">
-              <span className="material-symbols-outlined text-[22px]" aria-hidden="true">healing</span>
+            <span className="w-11 h-11 rounded bg-warning-container text-on-warning-container flex items-center justify-center">
+              <span className="material-symbols-outlined text-[24px]" aria-hidden="true">healing</span>
             </span>
-            <span className="font-headline text-title-lg text-light-on-surface">Check Plant Health</span>
-            <span className="font-body text-body-sm text-light-on-surface-variant">Leaf symptom scan</span>
+            <div>
+              <span className="block font-headline text-title-md text-light-on-surface">Plant Health</span>
+              <span className="block font-body text-body-sm text-light-on-surface-variant">Leaf check</span>
+            </div>
           </button>
 
           <button
             type="button"
-            onClick={onOpenAdvisor}
-            className="text-left bg-light-surface-container-lowest rounded-lg clay-card p-gutter-md hover:ring-2 hover:ring-light-primary transition-all flex flex-col items-start gap-gutter-xs"
+            onClick={onQuickNpkReport}
+            className="text-left min-h-[112px] bg-light-surface-container-lowest rounded-lg clay-card p-gutter-md hover:ring-2 hover:ring-light-primary transition-all flex flex-col justify-between gap-2"
           >
-            <span className="w-10 h-10 rounded bg-light-primary text-light-on-primary flex items-center justify-center">
-              <span className="material-symbols-outlined text-[22px]" aria-hidden="true">psychology</span>
+            <span className="w-11 h-11 rounded bg-light-primary text-light-on-primary flex items-center justify-center">
+              <span className="material-symbols-outlined text-[24px]" aria-hidden="true">biotech</span>
             </span>
-            <span className="font-headline text-title-lg text-light-on-surface">Get AI Advice</span>
-            <span className="font-body text-body-sm text-light-on-surface-variant">Guided soil plan</span>
+            <div>
+              <span className="block font-headline text-title-md text-light-on-surface">NPK Report</span>
+              <span className="block font-body text-body-sm text-light-on-surface-variant">Lab card / guide</span>
+            </div>
+          </button>
+        </section>
+
+        {/* Compact AI Advisor Link */}
+        <section
+          aria-label="FarmerBuddy AI Advisor"
+          className="bg-light-primary-container text-light-on-primary-container rounded-lg clay-btn-primary p-gutter-md flex flex-wrap items-center justify-between gap-gutter-sm"
+        >
+          <div className="flex items-center gap-gutter-sm">
+            <span className="material-symbols-outlined text-[26px] shrink-0" aria-hidden="true">psychology</span>
+            <div>
+              <span className="font-label text-label-sm uppercase tracking-wide opacity-85 block">Ask FarmerBuddy</span>
+              <p className="font-body text-body-sm">Get simple next steps for your crop &amp; soil</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onOpenAdvisor}
+            className="min-h-[44px] px-4 rounded-full bg-light-surface-container-lowest text-light-primary font-label text-label-md inline-flex items-center gap-1"
+          >
+            AI Advisor
+            <span className="material-symbols-outlined text-[16px]" aria-hidden="true">arrow_forward</span>
           </button>
         </section>
       </main>

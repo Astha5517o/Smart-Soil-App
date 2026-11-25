@@ -14,7 +14,7 @@ const TOPICS = [
 interface AdvisorSectionProps {
   contextSnapshot: string;
   cropName: string;
-  onSaveRecord: (record: Omit<SoilRecord, 'id' | 'timestampMs'>) => void;
+  onSaveRecord: (record: Omit<SoilRecord, 'id' | 'timestampMs'>) => boolean;
 }
 
 export const AdvisorSection: React.FC<AdvisorSectionProps> = ({
@@ -75,9 +75,12 @@ export const AdvisorSection: React.FC<AdvisorSectionProps> = ({
   return (
     <main className="flex-1 px-page-margin py-gutter-md pb-28 flex flex-col gap-gutter-md">
       <div>
+        <span className="font-label text-label-sm uppercase tracking-wider text-light-primary">
+          FarmerBuddy · SMART SOIL
+        </span>
         <h1 className="font-headline text-headline-lg text-light-on-surface">AI Soil Advisor</h1>
         <p className="font-body text-body-md text-light-on-surface-variant">
-          Cautious agronomy guidance combining ESP32 probe readings, scans, and NPK records.
+          Simple soil &amp; crop steps from your sensors and scans.
         </p>
       </div>
 
@@ -120,7 +123,7 @@ export const AdvisorSection: React.FC<AdvisorSectionProps> = ({
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
           placeholder="Ask a soil or crop question (optional)..."
-          className="w-full rounded-sm border-light-outline-variant bg-light-surface-bright font-body text-body-md"
+          className="w-full rounded-sm border border-light-outline-variant bg-light-surface-container-lowest px-3 py-2 font-body text-body-md"
         />
         <div className="flex flex-wrap gap-2">
           <button
@@ -129,7 +132,7 @@ export const AdvisorSection: React.FC<AdvisorSectionProps> = ({
             onClick={() => void handleGenerate()}
             className="flex-1 min-h-[48px] px-5 rounded-full bg-light-primary text-light-on-primary clay-btn-primary font-label text-label-lg disabled:opacity-60"
           >
-            {loading ? 'Generating Advice...' : 'Generate Guided Advice'}
+            {loading ? 'Generating Advice...' : 'Get Soil Advice'}
           </button>
           <button
             type="button"
@@ -180,11 +183,11 @@ export const AdvisorSection: React.FC<AdvisorSectionProps> = ({
             type="button"
             disabled={saved}
             onClick={() => {
-              onSaveRecord({
+              const savedOk = onSaveRecord({
                 category: 'AI_RECOMMENDATION',
                 origin: plan.isDemo ? 'DEMO_DATA' : 'AI_INTERPRETATION',
                 isDemo: Boolean(plan.isDemo),
-                dataSource: plan.isDemo ? 'Demo AI Advisor' : 'Gemini Soil Advisor',
+                dataSource: plan.isDemo ? 'Demo AI Advisor' : 'FarmerBuddy AI Advisor',
                 title: `${plan.isDemo ? 'Demo ' : ''}AI Soil Plan — ${cropName}`,
                 summary: plan.summary,
                 fullDetails: `${plan.summary}\n\n${plan.recommendations
@@ -194,7 +197,7 @@ export const AdvisorSection: React.FC<AdvisorSectionProps> = ({
                   )
                   .join('\n\n')}`,
               });
-              setSaved(true);
+              if (savedOk) setSaved(true);
             }}
             className="min-h-[48px] px-5 rounded-full border border-light-outline-variant bg-light-surface-container-lowest font-label text-label-lg disabled:opacity-60"
           >

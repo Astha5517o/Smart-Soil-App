@@ -127,9 +127,10 @@ fun ReportsScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column {
+                Text("FARMERBUDDY · SMART SOIL", style = MaterialTheme.typography.labelSmall, color = LightPrimary)
                 Text("Reports & History", style = MaterialTheme.typography.headlineLarge, color = LightOnSurface)
                 Text(
-                    text = "${records.size} local-first record(s)",
+                    text = "${records.size} saved record(s)",
                     style = MaterialTheme.typography.bodySmall,
                     color = LightOnSurfaceVariant
                 )
@@ -442,7 +443,7 @@ private fun shareReportText(
     formatter: SimpleDateFormat
 ) {
     val body = buildString {
-        appendLine("SMART SOIL — Report Export")
+        appendLine("FarmerBuddy (SMART SOIL) — Report Export")
         appendLine("Title: ${record.title}")
         appendLine("Origin: ${record.originBadge}")
         appendLine("Date: ${formatter.format(Date(record.timestampMs))}")
@@ -452,8 +453,8 @@ private fun shareReportText(
     }
     val intent = Intent(Intent.ACTION_SEND).apply {
         type = "text/plain"
-        putExtra(Intent.EXTRA_SUBJECT, "SMART SOIL: ${record.title}")
+        putExtra(Intent.EXTRA_SUBJECT, "FarmerBuddy: ${record.title}")
         putExtra(Intent.EXTRA_TEXT, body)
     }
-    context.startActivity(Intent.createChooser(intent, "Export Smart Soil Report"))
+    context.startActivity(Intent.createChooser(intent, "Export FarmerBuddy Report"))
 }

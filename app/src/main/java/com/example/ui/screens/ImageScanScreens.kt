@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import android.Manifest
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -10,7 +11,6 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -27,10 +27,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PhotoLibrary
-import androidx.compose.material.icons.filled.Science
-import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -50,6 +50,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -57,7 +58,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
@@ -69,9 +69,10 @@ import com.example.data.model.SoilScanResult
 import com.example.ui.components.ClayCard
 import com.example.ui.components.ClayPrimaryButton
 import com.example.ui.components.StatusPill
+import com.example.ui.theme.LightError
 import com.example.ui.theme.LightErrorContainer
+import com.example.ui.theme.LightOnError
 import com.example.ui.theme.LightOnErrorContainer
-import com.example.ui.theme.LightOnPrimary
 import com.example.ui.theme.LightOnSurface
 import com.example.ui.theme.LightOnSurfaceVariant
 import com.example.ui.theme.LightPrimary
@@ -80,6 +81,7 @@ import com.example.ui.theme.LightSurfaceContainerLow
 import com.example.ui.theme.OnSuccessContainer
 import com.example.ui.theme.OnWarningContainer
 import com.example.ui.theme.SuccessContainer
+import com.example.ui.theme.SuccessGreen
 import com.example.ui.theme.WarningContainer
 import com.example.ui.viewmodel.AsyncUiState
 import java.io.File
@@ -87,13 +89,16 @@ import java.io.File
 @Composable
 fun PhotoPickerAndCameraBar(
     selectedImageUri: Uri?,
+    isLoading: Boolean,
+    hasResult: Boolean,
     onImageSelected: (Uri) -> Unit,
+    onStartScan: (Uri) -> Unit,
     onLoadDemoSample: () -> Unit,
-    demoLabel: String = "Load Demo Sample Result",
+    demoLabel: String = "Load Demo Sample",
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
+    var pendingCameraUri by rememberSaveable { mutableStateOf<Uri?>(null) }
     var permissionDeniedNote by remember { mutableStateOf<String?>(null) }
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
@@ -115,20 +120,70 @@ fun PhotoPickerAndCameraBar(
         }
     }
 
+    fun launchCameraCapture() {
+        try {
+            val uri = createTempCaptureUri(context)
+            pendingCameraUri = uri
+            takePictureLauncher.launch(uri)
+        } catch (_: ActivityNotFoundException) {
+            permissionDeniedNote = "No camera app available. Use Upload Image to pick a photo."
+        } catch (e: Exception) {
+            permissionDeniedNote = "Could not open camera (${e.localizedMessage ?: "error"}). Use Upload Image instead."
+        }
+    }
+
     val cameraPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
         if (granted) {
-            val uri = createTempCaptureUri(context)
-            pendingCameraUri = uri
-            takePictureLauncher.launch(uri)
+            launchCameraCapture()
         } else {
-            permissionDeniedNote = "Camera permission was denied. You can still pick an image from your gallery."
+            permissionDeniedNote = "Camera permission was denied. Use Upload Image to pick a photo from your gallery."
         }
     }
 
     ClayCard(modifier = modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            ClayPrimaryButton(
+                text = "Take Photo",
+                icon = Icons.Default.CameraAlt,
+                onClick = {
+                    val granted = ContextCompat.checkSelfPermission(
+                        context,
+                        Manifest.permission.CAMERA
+                    ) == PackageManager.PERMISSION_GRANTED
+                    if (granted) {
+                        launchCameraCapture()
+                    } else {
+                        cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                    }
+                },
+                modifier = Modifier.weight(1f),
+                testTag = "take_photo_button"
+            )
+            OutlinedButton(
+                onClick = {
+                    photoPickerLauncher.launch(
+                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                    )
+                },
+                shape = RoundedCornerShape(999.dp),
+                modifier = Modifier
+                    .weight(1f)
+                    .minimumInteractiveComponentSize()
+                    .testTag("pick_photo_button")
+            ) {
+                Icon(Icons.Default.PhotoLibrary, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Upload Image")
+            }
+        }
+
         if (selectedImageUri != null) {
+            Spacer(modifier = Modifier.height(12.dp))
             AsyncImage(
                 model = selectedImageUri,
                 contentDescription = "Selected photo preview",
@@ -138,47 +193,15 @@ fun PhotoPickerAndCameraBar(
                     .height(210.dp)
                     .clip(RoundedCornerShape(18.dp))
             )
-            Spacer(modifier = Modifier.height(12.dp))
-        }
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            ClayPrimaryButton(
-                text = "Pick Photo",
-                icon = Icons.Default.PhotoLibrary,
-                onClick = {
-                    photoPickerLauncher.launch(
-                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                    )
-                },
-                modifier = Modifier.weight(1f),
-                testTag = "pick_photo_button"
-            )
-            OutlinedButton(
-                onClick = {
-                    val granted = ContextCompat.checkSelfPermission(
-                        context,
-                        Manifest.permission.CAMERA
-                    ) == PackageManager.PERMISSION_GRANTED
-                    if (granted) {
-                        val uri = createTempCaptureUri(context)
-                        pendingCameraUri = uri
-                        takePictureLauncher.launch(uri)
-                    } else {
-                        cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-                    }
-                },
-                shape = RoundedCornerShape(999.dp),
-                modifier = Modifier
-                    .weight(1f)
-                    .minimumInteractiveComponentSize()
-                    .testTag("take_photo_button")
-            ) {
-                Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("Take Photo")
+            if (!isLoading) {
+                Spacer(modifier = Modifier.height(12.dp))
+                ClayPrimaryButton(
+                    text = if (hasResult) "Scan Photo Again" else "Start Scan",
+                    icon = Icons.Default.Search,
+                    onClick = { onStartScan(selectedImageUri) },
+                    modifier = Modifier.fillMaxWidth(),
+                    testTag = "start_scan_button"
+                )
             }
         }
 
@@ -191,15 +214,17 @@ fun PhotoPickerAndCameraBar(
             )
         }
 
-        Spacer(modifier = Modifier.height(6.dp))
-        TextButton(
-            onClick = onLoadDemoSample,
-            modifier = Modifier
-                .align(Alignment.End)
-                .minimumInteractiveComponentSize()
-                .testTag("load_demo_sample_button")
-        ) {
-            Text(demoLabel)
+        if (!isLoading) {
+            Spacer(modifier = Modifier.height(4.dp))
+            TextButton(
+                onClick = onLoadDemoSample,
+                modifier = Modifier
+                    .align(Alignment.End)
+                    .minimumInteractiveComponentSize()
+                    .testTag("load_demo_sample_button")
+            ) {
+                Text(demoLabel)
+            }
         }
     }
 }
@@ -211,12 +236,12 @@ private fun createTempCaptureUri(context: Context): Uri {
 }
 
 @Composable
-private fun ScanTopBar(title: String, onBack: () -> Unit) {
+private fun ScanHeader(title: String, explanation: String, onBack: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 8.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.Top
     ) {
         IconButton(
             onClick = onBack,
@@ -224,11 +249,18 @@ private fun ScanTopBar(title: String, onBack: () -> Unit) {
         ) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back to Scan Hub")
         }
-        Text(
-            text = title,
-            style = MaterialTheme.typography.headlineMedium,
-            color = LightOnSurface
-        )
+        Column(modifier = Modifier.weight(1f).padding(top = 8.dp, end = 8.dp)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.headlineMedium,
+                color = LightOnSurface
+            )
+            Text(
+                text = explanation,
+                style = MaterialTheme.typography.bodySmall,
+                color = LightOnSurfaceVariant
+            )
+        }
     }
 }
 
@@ -239,18 +271,24 @@ private fun ScanTopBar(title: String, onBack: () -> Unit) {
 fun SoilScanScreen(
     uiState: AsyncUiState<SoilScanResult>,
     onAnalyzePhoto: (Uri) -> Unit,
+    onSaveResult: (SoilScanResult, Uri?) -> Unit,
+    onResetScan: () -> Unit,
     onLoadDemo: () -> Unit,
     onBack: () -> Unit
 ) {
     BackHandler(onBack = onBack)
-    var selectedUri by remember { mutableStateOf<Uri?>(null) }
+    var selectedUri by rememberSaveable { mutableStateOf<Uri?>(null) }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(LightSurface)
     ) {
-        ScanTopBar(title = "Soil Scan", onBack = onBack)
+        ScanHeader(
+            title = "Soil Scan",
+            explanation = "Take or upload a clear daylight soil photo to check texture and type.",
+            onBack = onBack
+        )
 
         Column(
             modifier = Modifier
@@ -259,67 +297,86 @@ fun SoilScanScreen(
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            ClayCard(containerColor = LightSurfaceContainerLow) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
-                    Icon(Icons.Default.Info, contentDescription = null, tint = LightPrimary, modifier = Modifier.size(20.dp))
-                    Text(
-                        text = "Visual soil assessment only. An image cannot measure soil pH, moisture %, or NPK nutrients—use your ESP32 probes or a lab test for chemical values.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = LightOnSurfaceVariant
-                    )
-                }
-            }
-
             PhotoPickerAndCameraBar(
                 selectedImageUri = selectedUri,
+                isLoading = uiState is AsyncUiState.Loading,
+                hasResult = uiState is AsyncUiState.Success,
                 onImageSelected = { uri ->
                     selectedUri = uri
-                    onAnalyzePhoto(uri)
+                    onResetScan()
                 },
-                onLoadDemoSample = onLoadDemo
+                onStartScan = { uri -> onAnalyzePhoto(uri) },
+                onLoadDemoSample = {
+                    selectedUri = null
+                    onLoadDemo()
+                }
             )
 
             when (uiState) {
-                is AsyncUiState.Idle -> {
-                    ClayCard {
-                        Text(
-                            text = "Take or upload a clear daylight photo of topsoil crumbs to begin.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = LightOnSurfaceVariant
-                        )
-                    }
-                }
-                is AsyncUiState.Loading -> LoadingAnalysisCard("Analyzing soil characteristics with Gemini Vision...")
-                is AsyncUiState.Error -> ErrorAnalysisCard(uiState.message)
+                is AsyncUiState.Idle -> Unit
+                is AsyncUiState.Loading -> LoadingAnalysisCard("Analysing...")
+                is AsyncUiState.Error -> ErrorAnalysisCard(
+                    message = uiState.message,
+                    onTryAgain = selectedUri?.let { uri -> { onAnalyzePhoto(uri) } }
+                )
                 is AsyncUiState.Success -> {
                     val res = uiState.data
+                    var saved by remember(res) { mutableStateOf(false) }
+
                     ClayCard {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("Soil Scan Result", style = MaterialTheme.typography.titleLarge, color = LightOnSurface)
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "SCAN COMPLETE",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = SuccessGreen
+                                )
+                                Text(res.possibleSoilType, style = MaterialTheme.typography.titleLarge, color = LightOnSurface)
+                            }
                             StatusPill(
-                                text = if (res.isDemo) "DEMO SAMPLE" else "SAVED TO REPORTS",
+                                text = if (res.isDemo) "DEMO" else if (saved) "SAVED" else "READY",
                                 containerColor = if (res.isDemo) WarningContainer else SuccessContainer,
                                 contentColor = if (res.isDemo) OnWarningContainer else OnSuccessContainer
                             )
                         }
                         Spacer(modifier = Modifier.height(10.dp))
-                        LabeledSection("Possible Soil Type", res.possibleSoilType)
-                        LabeledSection("Visible Characteristics", res.visibleCharacteristics)
-                        LabeledSection("Organic Matter Indicators", res.organicMatterIndicators)
-                        LabeledSection("Uncertainty & Limitations", res.uncertaintyExplanation)
+                        LabeledSection("Visible Look", res.visibleCharacteristics)
+                        LabeledSection("Organic Matter", res.organicMatterIndicators)
+                        LabeledSection("Note", res.uncertaintyExplanation)
+                        BulletSection("Helpful Next Tests", res.recommendedAdditionalTests)
 
-                        Text(
-                            text = "Recommended Additional Tests",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = LightOnSurface
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        res.recommendedAdditionalTests.forEach { test ->
-                            Text("• $test", style = MaterialTheme.typography.bodySmall, color = LightOnSurfaceVariant)
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            ClayPrimaryButton(
+                                text = if (saved) "Saved" else "Save Result",
+                                icon = Icons.Default.Save,
+                                enabled = !saved,
+                                onClick = {
+                                    onSaveResult(res, selectedUri)
+                                    saved = true
+                                },
+                                modifier = Modifier.weight(1f),
+                                testTag = "save_soil_scan_button"
+                            )
+                            OutlinedButton(
+                                onClick = {
+                                    selectedUri = null
+                                    onResetScan()
+                                },
+                                shape = RoundedCornerShape(999.dp),
+                                modifier = Modifier.minimumInteractiveComponentSize()
+                            ) {
+                                Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Scan Again")
+                            }
                         }
                     }
                 }
@@ -337,19 +394,24 @@ fun SoilScanScreen(
 fun CropIdentificationScreen(
     uiState: AsyncUiState<CropIdResult>,
     onIdentifyPhoto: (Uri) -> Unit,
+    onResetScan: () -> Unit,
     onLoadDemo: () -> Unit,
     onConfirmAndSave: (String, String, CropIdResult, Uri?) -> Unit,
     onBack: () -> Unit
 ) {
     BackHandler(onBack = onBack)
-    var selectedUri by remember { mutableStateOf<Uri?>(null) }
+    var selectedUri by rememberSaveable { mutableStateOf<Uri?>(null) }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(LightSurface)
     ) {
-        ScanTopBar(title = "Crop Identification", onBack = onBack)
+        ScanHeader(
+            title = "Identify Crop",
+            explanation = "Take or upload a photo of your plant leaves to confirm your active crop.",
+            onBack = onBack
+        )
 
         Column(
             modifier = Modifier
@@ -360,25 +422,26 @@ fun CropIdentificationScreen(
         ) {
             PhotoPickerAndCameraBar(
                 selectedImageUri = selectedUri,
+                isLoading = uiState is AsyncUiState.Loading,
+                hasResult = uiState is AsyncUiState.Success,
                 onImageSelected = { uri ->
                     selectedUri = uri
-                    onIdentifyPhoto(uri)
+                    onResetScan()
                 },
-                onLoadDemoSample = onLoadDemo
+                onStartScan = { uri -> onIdentifyPhoto(uri) },
+                onLoadDemoSample = {
+                    selectedUri = null
+                    onLoadDemo()
+                }
             )
 
             when (uiState) {
-                is AsyncUiState.Idle -> {
-                    ClayCard {
-                        Text(
-                            text = "Upload or capture a photo of your crop leaves or canopy. You will review and confirm the crop before it is saved.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = LightOnSurfaceVariant
-                        )
-                    }
-                }
-                is AsyncUiState.Loading -> LoadingAnalysisCard("Identifying crop features with Gemini Vision...")
-                is AsyncUiState.Error -> ErrorAnalysisCard(uiState.message)
+                is AsyncUiState.Idle -> Unit
+                is AsyncUiState.Loading -> LoadingAnalysisCard("Analysing...")
+                is AsyncUiState.Error -> ErrorAnalysisCard(
+                    message = uiState.message,
+                    onTryAgain = selectedUri?.let { uri -> { onIdentifyPhoto(uri) } }
+                )
                 is AsyncUiState.Success -> {
                     val res = uiState.data
                     var confirmedCrop by remember(res) { mutableStateOf(res.possibleCropName) }
@@ -392,28 +455,23 @@ fun CropIdentificationScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("Possible Crop Match", style = MaterialTheme.typography.titleLarge)
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("SCAN COMPLETE", style = MaterialTheme.typography.labelSmall, color = SuccessGreen)
+                                Text("Confirm Your Crop", style = MaterialTheme.typography.titleLarge)
+                            }
                             StatusPill(
-                                text = if (res.isDemo) "DEMO • ${res.confidenceLevel}" else "${res.confidenceLevel} Confidence",
+                                text = if (res.isDemo) "DEMO · ${res.confidenceLevel}" else "${res.confidenceLevel} Confidence",
                                 containerColor = if (res.isDemo) WarningContainer else LightSurfaceContainerLow,
                                 contentColor = if (res.isDemo) OnWarningContainer else LightOnSurface
                             )
                         }
                         Spacer(modifier = Modifier.height(10.dp))
-                        LabeledSection("Visible Identifying Features", res.identifyingFeatures)
-                        LabeledSection("Confidence & Uncertainty", res.uncertaintyNotes)
-
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "Confirm Before Saving",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = LightPrimary
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
+                        LabeledSection("Visible Features", res.identifyingFeatures)
+                        LabeledSection("Check", res.uncertaintyNotes)
 
                         OutlinedTextField(
                             value = confirmedCrop,
-                            onValueChange = { confirmedCrop = it },
+                            onValueChange = { confirmedCrop = it; confirmedDone = false },
                             label = { Text("Crop Name (edit if needed)") },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth().testTag("confirm_crop_name_input")
@@ -442,6 +500,7 @@ fun CropIdentificationScreen(
                                         text = { Text(stage) },
                                         onClick = {
                                             confirmedStage = stage
+                                            confirmedDone = false
                                             stageExpanded = false
                                         }
                                     )
@@ -450,17 +509,34 @@ fun CropIdentificationScreen(
                         }
 
                         Spacer(modifier = Modifier.height(12.dp))
-                        ClayPrimaryButton(
-                            text = if (confirmedDone) "Saved as Active Crop" else "Confirm & Set Active Crop",
-                            icon = Icons.Default.CheckCircle,
-                            enabled = confirmedCrop.isNotBlank() && !confirmedDone,
-                            onClick = {
-                                onConfirmAndSave(confirmedCrop.trim(), confirmedStage, res, selectedUri)
-                                confirmedDone = true
-                            },
+                        Row(
                             modifier = Modifier.fillMaxWidth(),
-                            testTag = "confirm_crop_save_button"
-                        )
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            ClayPrimaryButton(
+                                text = if (confirmedDone) "Saved Active Crop" else "Save Result",
+                                icon = Icons.Default.CheckCircle,
+                                enabled = confirmedCrop.isNotBlank() && !confirmedDone,
+                                onClick = {
+                                    onConfirmAndSave(confirmedCrop.trim(), confirmedStage, res, selectedUri)
+                                    confirmedDone = true
+                                },
+                                modifier = Modifier.weight(1f),
+                                testTag = "confirm_crop_save_button"
+                            )
+                            OutlinedButton(
+                                onClick = {
+                                    selectedUri = null
+                                    onResetScan()
+                                },
+                                shape = RoundedCornerShape(999.dp),
+                                modifier = Modifier.minimumInteractiveComponentSize()
+                            ) {
+                                Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Scan Again")
+                            }
+                        }
                     }
                 }
             }
@@ -477,18 +553,24 @@ fun PlantHealthScanScreen(
     selectedCropName: String,
     uiState: AsyncUiState<PlantHealthResult>,
     onAnalyzePhoto: (Uri) -> Unit,
+    onSaveResult: (PlantHealthResult, Uri?) -> Unit,
+    onResetScan: () -> Unit,
     onLoadDemo: () -> Unit,
     onBack: () -> Unit
 ) {
     BackHandler(onBack = onBack)
-    var selectedUri by remember { mutableStateOf<Uri?>(null) }
+    var selectedUri by rememberSaveable { mutableStateOf<Uri?>(null) }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(LightSurface)
     ) {
-        ScanTopBar(title = "Plant Health Scan", onBack = onBack)
+        ScanHeader(
+            title = "Plant Health",
+            explanation = "Take or upload a close-up leaf photo for $selectedCropName to check visible stress.",
+            onBack = onBack
+        )
 
         Column(
             modifier = Modifier
@@ -497,59 +579,84 @@ fun PlantHealthScanScreen(
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            ClayCard(containerColor = WarningContainer.copy(alpha = 0.7f)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
-                    Icon(Icons.Default.Warning, contentDescription = null, tint = OnWarningContainer, modifier = Modifier.size(20.dp))
-                    Text(
-                        text = "Cautious screening for $selectedCropName: an image alone cannot provide a definitive disease diagnosis. Use results to guide field checks.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = OnWarningContainer
-                    )
-                }
-            }
-
             PhotoPickerAndCameraBar(
                 selectedImageUri = selectedUri,
+                isLoading = uiState is AsyncUiState.Loading,
+                hasResult = uiState is AsyncUiState.Success,
                 onImageSelected = { uri ->
                     selectedUri = uri
-                    onAnalyzePhoto(uri)
+                    onResetScan()
                 },
-                onLoadDemoSample = onLoadDemo
+                onStartScan = { uri -> onAnalyzePhoto(uri) },
+                onLoadDemoSample = {
+                    selectedUri = null
+                    onLoadDemo()
+                }
             )
 
             when (uiState) {
-                is AsyncUiState.Idle -> {
-                    ClayCard {
-                        Text(
-                            text = "Upload or capture a close-up photo of leaves or stems showing spots, discoloration, or wilting.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = LightOnSurfaceVariant
-                        )
-                    }
-                }
-                is AsyncUiState.Loading -> LoadingAnalysisCard("Inspecting visible plant symptoms...")
-                is AsyncUiState.Error -> ErrorAnalysisCard(uiState.message)
+                is AsyncUiState.Idle -> Unit
+                is AsyncUiState.Loading -> LoadingAnalysisCard("Analysing...")
+                is AsyncUiState.Error -> ErrorAnalysisCard(
+                    message = uiState.message,
+                    onTryAgain = selectedUri?.let { uri -> { onAnalyzePhoto(uri) } }
+                )
                 is AsyncUiState.Success -> {
                     val res = uiState.data
+                    var saved by remember(res) { mutableStateOf(false) }
+
                     ClayCard {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("Plant Health Observations", style = MaterialTheme.typography.titleLarge)
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("SCAN COMPLETE", style = MaterialTheme.typography.labelSmall, color = SuccessGreen)
+                                Text("Leaf & Plant Check", style = MaterialTheme.typography.titleLarge)
+                            }
                             StatusPill(
-                                text = if (res.isDemo) "DEMO SAMPLE" else "SAVED TO REPORTS",
+                                text = if (res.isDemo) "DEMO" else if (saved) "SAVED" else "READY",
                                 containerColor = if (res.isDemo) WarningContainer else SuccessContainer,
                                 contentColor = if (res.isDemo) OnWarningContainer else OnSuccessContainer
                             )
                         }
                         Spacer(modifier = Modifier.height(10.dp))
-                        LabeledSection("Visible Symptoms", res.visibleSymptoms)
-                        BulletSection("Possible Explanations (Non-Definitive)", res.possibleExplanations)
-                        BulletSection("Suggested Field Checks", res.suggestedChecks)
-                        BulletSection("Cautious Next Steps", res.cautiousNextSteps)
-                        LabeledSection("Limitations of Image-Based Diagnosis", res.diagnosisLimitations)
+                        LabeledSection("Visible Signs", res.visibleSymptoms)
+                        BulletSection("Possible Reasons (Not Final Diagnosis)", res.possibleExplanations)
+                        BulletSection("What to Check in Field", res.suggestedChecks)
+                        BulletSection("Safe Next Steps", res.cautiousNextSteps)
+                        LabeledSection("Important Limitation", res.diagnosisLimitations)
+
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            ClayPrimaryButton(
+                                text = if (saved) "Saved" else "Save Result",
+                                icon = Icons.Default.Save,
+                                enabled = !saved,
+                                onClick = {
+                                    onSaveResult(res, selectedUri)
+                                    saved = true
+                                },
+                                modifier = Modifier.weight(1f),
+                                testTag = "save_plant_health_button"
+                            )
+                            OutlinedButton(
+                                onClick = {
+                                    selectedUri = null
+                                    onResetScan()
+                                },
+                                shape = RoundedCornerShape(999.dp),
+                                modifier = Modifier.minimumInteractiveComponentSize()
+                            ) {
+                                Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Scan Again")
+                            }
+                        }
                     }
                 }
             }
@@ -567,17 +674,38 @@ fun LoadingAnalysisCard(message: String) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             CircularProgressIndicator(modifier = Modifier.size(24.dp), color = LightPrimary, strokeWidth = 2.5.dp)
-            Text(text = message, style = MaterialTheme.typography.bodyMedium, color = LightOnSurface)
+            Column {
+                Text(text = message, style = MaterialTheme.typography.titleMedium, color = LightOnSurface)
+                Text(
+                    text = "Checking your photo with FarmerBuddy AI...",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = LightOnSurfaceVariant
+                )
+            }
         }
     }
 }
 
 @Composable
-fun ErrorAnalysisCard(message: String) {
+fun ErrorAnalysisCard(
+    message: String,
+    onTryAgain: (() -> Unit)? = null
+) {
     ClayCard(containerColor = LightErrorContainer) {
-        Text("Could not complete analysis", style = MaterialTheme.typography.titleMedium, color = LightOnErrorContainer)
+        Text("Scan could not finish", style = MaterialTheme.typography.titleMedium, color = LightOnErrorContainer)
         Spacer(modifier = Modifier.height(4.dp))
         Text(message, style = MaterialTheme.typography.bodySmall, color = LightOnErrorContainer)
+        if (onTryAgain != null) {
+            Spacer(modifier = Modifier.height(10.dp))
+            Button(
+                onClick = onTryAgain,
+                colors = ButtonDefaults.buttonColors(containerColor = LightError, contentColor = LightOnError),
+                shape = RoundedCornerShape(999.dp),
+                modifier = Modifier.minimumInteractiveComponentSize()
+            ) {
+                Text("Try Again")
+            }
+        }
     }
 }
 

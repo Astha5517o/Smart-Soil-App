@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   CROP_PRESETS,
   GROWTH_STAGES,
@@ -34,6 +34,13 @@ export const BleCalibrationModal: React.FC<BleCalibrationModalProps> = ({
   onClose,
 }) => {
   const [draft, setDraft] = useState<UserSettings>(settings);
+
+  useEffect(() => {
+    if (open) {
+      setDraft(settings);
+    }
+  }, [open, settings]);
+
   if (!open) return null;
 
   const supported = isWebBluetoothSupported();
@@ -45,7 +52,12 @@ export const BleCalibrationModal: React.FC<BleCalibrationModalProps> = ({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">
-          <h2 className="font-headline text-headline-md">ESP32 BLE &amp; Calibration</h2>
+          <div>
+            <span className="font-label text-label-sm uppercase tracking-wider text-light-primary">
+              FarmerBuddy · SMART SOIL
+            </span>
+            <h2 className="font-headline text-headline-md">ESP32 BLE &amp; Calibration</h2>
+          </div>
           <button type="button" onClick={onClose} className="font-label text-label-md text-light-primary">
             Close
           </button>
@@ -121,7 +133,7 @@ export const BleCalibrationModal: React.FC<BleCalibrationModalProps> = ({
                     maxPh: found?.maxPh ?? draft.maxPh,
                   });
                 }}
-                className="mt-1 w-full rounded-sm border-light-outline-variant"
+                className="mt-1 w-full rounded-sm border border-light-outline-variant bg-light-surface-container-lowest px-3 py-2 font-body text-body-md"
               >
                 {CROP_PRESETS.map((c) => (
                   <option key={c.id} value={c.name}>
@@ -136,7 +148,7 @@ export const BleCalibrationModal: React.FC<BleCalibrationModalProps> = ({
               <select
                 value={draft.growthStage}
                 onChange={(e) => setDraft({ ...draft, growthStage: e.target.value })}
-                className="mt-1 w-full rounded-sm border-light-outline-variant"
+                className="mt-1 w-full rounded-sm border border-light-outline-variant bg-light-surface-container-lowest px-3 py-2 font-body text-body-md"
               >
                 {GROWTH_STAGES.map((st) => (
                   <option key={st} value={st}>
@@ -154,7 +166,7 @@ export const BleCalibrationModal: React.FC<BleCalibrationModalProps> = ({
                 type="number"
                 value={draft.minMoisture}
                 onChange={(e) => setDraft({ ...draft, minMoisture: Number(e.target.value) })}
-                className="mt-1 w-full rounded-sm border-light-outline-variant"
+                className="mt-1 w-full rounded-sm border border-light-outline-variant bg-light-surface-container-lowest px-3 py-2 font-body text-body-md"
               />
             </label>
             <label className="font-label text-label-sm">
@@ -163,7 +175,7 @@ export const BleCalibrationModal: React.FC<BleCalibrationModalProps> = ({
                 type="number"
                 value={draft.maxMoisture}
                 onChange={(e) => setDraft({ ...draft, maxMoisture: Number(e.target.value) })}
-                className="mt-1 w-full rounded-sm border-light-outline-variant"
+                className="mt-1 w-full rounded-sm border border-light-outline-variant bg-light-surface-container-lowest px-3 py-2 font-body text-body-md"
               />
             </label>
             <label className="font-label text-label-sm">
@@ -174,7 +186,7 @@ export const BleCalibrationModal: React.FC<BleCalibrationModalProps> = ({
                 onChange={(e) =>
                   setDraft({ ...draft, calibration: { ...draft.calibration, dryAdc: Number(e.target.value) } })
                 }
-                className="mt-1 w-full rounded-sm border-light-outline-variant"
+                className="mt-1 w-full rounded-sm border border-light-outline-variant bg-light-surface-container-lowest px-3 py-2 font-body text-body-md"
               />
             </label>
             <label className="font-label text-label-sm">
@@ -185,7 +197,7 @@ export const BleCalibrationModal: React.FC<BleCalibrationModalProps> = ({
                 onChange={(e) =>
                   setDraft({ ...draft, calibration: { ...draft.calibration, wetAdc: Number(e.target.value) } })
                 }
-                className="mt-1 w-full rounded-sm border-light-outline-variant"
+                className="mt-1 w-full rounded-sm border border-light-outline-variant bg-light-surface-container-lowest px-3 py-2 font-body text-body-md"
               />
             </label>
           </div>

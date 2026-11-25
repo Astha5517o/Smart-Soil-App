@@ -1,3 +1,4 @@
 <resources>
-    <string name="app_name">Smart Soil</string>
+    <string name="app_name">FarmerBuddy</string>
+    <string name="app_subtitle">SMART SOIL</string>
 </resources>

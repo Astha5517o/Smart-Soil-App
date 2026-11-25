@@ -1,11 +1,22 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { GEMINI_MODEL, Type, parseJsonSafe, parseValidatedImage, requirePostAndClient } from './_shared.js';
+import {
+  GEMINI_MODEL,
+  Type,
+  extractResponseText,
+  handleGeminiError,
+  normalizeString,
+  normalizeStringArray,
+  parseJsonSafe,
+  parseRequestBody,
+  parseValidatedImage,
+  requirePostAndClient,
+} from './_shared.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ai = requirePostAndClient(req, res);
   if (!ai) return;
 
-  const { imageBase64, mimeType } = (req.body ?? {}) as { imageBase64?: unknown; mimeType?: unknown };
+  const { imageBase64, mimeType } = parseRequestBody(req);
   const img = parseValidatedImage(imageBase64, mimeType);
   if ('error' in img) {
     return res.status(400).json({ error: img.error });
@@ -21,8 +32,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             { inlineData: { data: img.data, mimeType: img.mimeType } },
             {
               text: [
-                'You are assisting SMART SOIL, a school science exhibition soil monitoring system.',
-                'Analyze this soil photograph objectively.',
+                'You are assisting FarmerBuddy (SMART SOIL), an AI-powered soil monitoring system.',
+                'Analyze this soil photograph objectively in simple, clear, farmer-friendly language.',
                 'STRICT RULES:',
                 '- Describe only visible characteristics (color, clodding, texture clues, visible organic residue).',
                 '- Estimate a possible broad soil type cautiously.',
@@ -58,9 +69,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       },
     });
 
-    return res.status(200).json(parseJsonSafe(response.text));
+    const parsed = parseJsonSafe(extractResponseText(response));
+    const possibleSoilType = normalizeString(parsed.possibleSoilType, '');
+    const visibleCharacteristics = normalizeString(parsed.visibleCharacteristics, '');
+    if (!possibleSoilType || !visibleCharacteristics) {
+      throw new Error('Incomplete soil analysis payload from Gemini.');
+    }
+
+    return res.status(200).json({
+      visibleCharacteristics,
+      possibleSoilType,
+      organicMatterIndicators: normalizeString(
+        parsed.organicMatterIndicators,
+        'No clear organic matter indicators visible in photo.'
+      ),
+      uncertaintyExplanation: normalizeString(
+        parsed.uncertaintyExplanation,
+        'Visual scan cannot measure pH, moisture %, or NPK nutrients. Confirm with sensor or lab tests.'
+      ),
+      recommendedAdditionalTests: normalizeStringArray(parsed.recommendedAdditionalTests, [
+        'Check root-zone moisture with calibrated ESP32 probe',
+        'Run a laboratory Soil Health Card test for pH and NPK',
+      ]),
+    });
   } catch (err) {
-    console.error('Soil scan failed:', err instanceof Error ? err.message : 'Unknown error');
-    return res.status(502).json({ error: 'Unable to complete soil image analysis right now. Please try again.' });
+    return handleGeminiError(
+      res,
+      'Soil scan',
+      err,
+      'Unable to complete soil image analysis right now. Please try a clearer photo.'
+    );
   }
 }

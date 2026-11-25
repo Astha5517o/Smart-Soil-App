@@ -266,6 +266,7 @@ fun SmartSoilApp(
                                 onOpenSoilScan = { navController.navigate(Routes.SCAN_SOIL) },
                                 onOpenCropId = { navController.navigate(Routes.SCAN_CROP) },
                                 onOpenPlantHealth = { navController.navigate(Routes.SCAN_PLANT) },
+                                onOpenNpkReport = { navController.navigate(Routes.SCAN_NPK) },
                                 onOpenAiAdvisor = { navigateTopTab(Routes.ADVISOR) },
                                 onSaveSensorSnapshot = { viewModel.saveCurrentSensorSnapshot() }
                             )
@@ -285,6 +286,8 @@ fun SmartSoilApp(
                             SoilScanScreen(
                                 uiState = soilScanState,
                                 onAnalyzePhoto = { viewModel.analyzeSoilPhoto(it) },
+                                onSaveResult = { res, uri -> viewModel.saveSoilScanResult(res, uri) },
+                                onResetScan = { viewModel.resetSoilScan() },
                                 onLoadDemo = { viewModel.loadDemoSoilScan() },
                                 onBack = { navController.popBackStack() }
                             )
@@ -294,6 +297,7 @@ fun SmartSoilApp(
                             CropIdentificationScreen(
                                 uiState = cropIdState,
                                 onIdentifyPhoto = { viewModel.identifyCropPhoto(it) },
+                                onResetScan = { viewModel.resetCropId() },
                                 onLoadDemo = { viewModel.loadDemoCropId() },
                                 onConfirmAndSave = { crop, stage, res, uri ->
                                     viewModel.confirmAndSaveCrop(crop, stage, res, uri)
@@ -307,6 +311,8 @@ fun SmartSoilApp(
                                 selectedCropName = preferences.selectedCropName,
                                 uiState = plantHealthState,
                                 onAnalyzePhoto = { viewModel.analyzePlantHealthPhoto(it) },
+                                onSaveResult = { res, uri -> viewModel.savePlantHealthResult(res, uri) },
+                                onResetScan = { viewModel.resetPlantHealth() },
                                 onLoadDemo = { viewModel.loadDemoPlantHealth() },
                                 onBack = { navController.popBackStack() }
                             )
@@ -318,12 +324,16 @@ fun SmartSoilApp(
                                 labState = npkLabState,
                                 regionalState = npkRegionalState,
                                 onExtractLabReport = { viewModel.extractNpkLabReport(it) },
+                                onResetLab = { viewModel.resetNpkLab() },
                                 onLoadDemoLab = { viewModel.loadDemoLabReport() },
                                 onSaveVerifiedLab = { n, p, k, u, src, dt, isDemo, uri ->
                                     viewModel.saveVerifiedLabReport(n, p, k, u, src, dt, isDemo, uri)
                                 },
                                 onSearchRegionalReference = { c, r, s ->
                                     viewModel.fetchRegionalNpkReference(c, r, s)
+                                },
+                                onSaveRegionalReference = { res ->
+                                    viewModel.saveRegionalNpkReference(res)
                                 },
                                 onBack = { navController.popBackStack() }
                             )

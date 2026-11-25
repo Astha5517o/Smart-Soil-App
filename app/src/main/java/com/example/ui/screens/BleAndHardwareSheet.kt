@@ -101,6 +101,11 @@ fun BleAndHardwareSheet(
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Text(
+                text = "FARMERBUDDY · SMART SOIL",
+                style = MaterialTheme.typography.labelSmall,
+                color = LightPrimary
+            )
+            Text(
                 text = "ESP32 BLE & Crop Calibration",
                 style = MaterialTheme.typography.headlineMedium,
                 color = LightOnSurface

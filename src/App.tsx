@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AdvisorSection } from './components/AdvisorSection';
 import { BleCalibrationModal } from './components/BleCalibrationModal';
 import { HomeDashboard } from './components/HomeDashboard';
@@ -30,12 +30,19 @@ export const App: React.FC = () => {
   const [bleError, setBleError] = useState<string | null>(null);
   const [liveReading, setLiveReading] = useState<SensorReading | null>(null);
   const [showBleModal, setShowBleModal] = useState(false);
+  const [statusToast, setStatusToast] = useState<{ text: string; isError?: boolean } | null>(null);
 
   const gattServerRef = useRef<BluetoothRemoteGATTServer | null>(null);
   const bleDeviceRef = useRef<BluetoothDevice | null>(null);
   const bleCharacteristicRef = useRef<BluetoothRemoteGATTCharacteristic | null>(null);
   const notificationHandlerRef = useRef<((event: Event) => void) | null>(null);
   const disconnectHandlerRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    if (!statusToast) return;
+    const t = setTimeout(() => setStatusToast(null), 3800);
+    return () => clearTimeout(t);
+  }, [statusToast]);
 
   const activeReading: SensorReading | null = useMemo(() => {
     if (displayMode === 'live') {
@@ -65,16 +72,22 @@ export const App: React.FC = () => {
 
   const contextSnapshot = useMemo(() => {
     const latestSoil = records.find((r) => r.category === 'SOIL_SCAN');
-    const latestNpk = records.find((r) => r.category === 'NPK_REPORT');
+    const latestPlant = records.find((r) => r.category === 'PLANT_HEALTH_SCAN');
+    const latestLabNpk = records.find((r) => r.category === 'NPK_REPORT' && r.origin === 'LAB_REPORT');
+    const latestRegNpk = records.find((r) => r.category === 'NPK_REPORT' && r.origin === 'REFERENCE_ESTIMATE');
     return [
       `Crop: ${settings.cropName} (Growth Stage: ${settings.growthStage})`,
       `Targets: Moisture ${settings.minMoisture}-${settings.maxMoisture}%, pH ${settings.minPh}-${settings.maxPh}`,
       activeReading
-        ? `Sensor Source: ${activeReading.isDemo ? 'DEMO DATA (Illustrative)' : 'LIVE ESP32 BLE'}\nMoisture: ${activeReading.moisturePercent ?? 'Unavailable'}% (Raw ADC: ${activeReading.moistureRaw ?? 'N/A'})\npH: ${activeReading.ph ?? 'Unavailable'}\nTemp: ${activeReading.temperatureC ?? 'Unavailable'}°C`
-        : 'Sensor Readings: ESP32 Disconnected / Unavailable',
-      latestSoil ? `Latest Soil Scan: ${latestSoil.title} — ${latestSoil.summary}` : 'Latest Soil Scan: None',
-      latestNpk ? `Latest NPK Info (${latestNpk.origin}): ${latestNpk.title} — ${latestNpk.summary}` : 'Latest NPK Info: None',
-    ].join('\n');
+        ? `Sensor Source: ${activeReading.isDemo ? 'DEMO DATA (Illustrative only — NOT live field reading)' : 'LIVE ESP32 BLE (Verified)'}\nMoisture: ${activeReading.moisturePercent ?? 'Unavailable'}% (Raw ADC: ${activeReading.moistureRaw ?? 'N/A'})\npH: ${activeReading.ph ?? 'Unavailable'}\nTemp: ${activeReading.temperatureC ?? 'Unavailable'}°C`
+        : 'Sensor Readings: Not connected / Unavailable',
+      latestSoil ? `Latest Soil Scan (${latestSoil.origin}): ${latestSoil.title} — ${latestSoil.summary}` : 'Latest Soil Scan: None',
+      latestPlant ? `Latest Plant Health (${latestPlant.origin}): ${latestPlant.title} — ${latestPlant.summary}` : 'Latest Plant Health: None',
+      latestLabNpk ? `Verified Lab NPK Report: ${latestLabNpk.title} — ${latestLabNpk.summary}` : 'Verified Lab NPK Report: None uploaded',
+      latestRegNpk ? `Regional NPK Reference Estimate (NOT A LAB TEST): ${latestRegNpk.title} — ${latestRegNpk.summary}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n');
   }, [settings, activeReading, records]);
 
   const connectBle = async () => {
@@ -233,8 +246,22 @@ export const App: React.FC = () => {
     setBleError(null);
   };
 
-  const handleSaveRecord = (rec: Omit<SoilRecord, 'id' | 'timestampMs'>) => {
-    setRecords(soilStorage.addRecord(rec));
+  const handleSaveRecord = (rec: Omit<SoilRecord, 'id' | 'timestampMs'>): boolean => {
+    const outcome = soilStorage.addRecordSafe(rec);
+    if (outcome.saved) {
+      setRecords(outcome.records);
+      setStatusToast({
+        text: outcome.strippedImage
+          ? 'Saved to Reports (photo omitted due to browser storage limit).'
+          : 'Saved to Reports.',
+      });
+      return true;
+    }
+    setStatusToast({
+      text: outcome.error || 'Could not save report to browser storage.',
+      isError: true,
+    });
+    return false;
   };
 
   return (
@@ -262,6 +289,10 @@ export const App: React.FC = () => {
           }}
           onQuickPlantHealth={() => {
             setScanSubView('plant');
+            setTab('scan');
+          }}
+          onQuickNpkReport={() => {
+            setScanSubView('npk');
             setTab('scan');
           }}
           onOpenAdvisor={() => setTab('advisor')}
@@ -335,6 +366,27 @@ export const App: React.FC = () => {
             setSettings(DEFAULT_SETTINGS);
           }}
         />
+      )}
+
+      {statusToast && (
+        <div
+          role="status"
+          aria-live="polite"
+          className={`fixed bottom-20 left-1/2 -translate-x-1/2 z-40 max-w-md w-[calc(100%-32px)] px-4 py-3 rounded-full shadow-lg flex items-center justify-between gap-2 font-label text-label-md ${
+            statusToast.isError
+              ? 'bg-light-error text-light-on-error'
+              : 'bg-light-primary text-light-on-primary'
+          }`}
+        >
+          <span>{statusToast.text}</span>
+          <button
+            type="button"
+            onClick={() => setStatusToast(null)}
+            className="text-xs underline shrink-0"
+          >
+            Dismiss
+          </button>
+        </div>
       )}
 
       {/* Fixed 4-Tab Bottom Navigation matching Stitch HomeDashboard.html */}

@@ -59,12 +59,12 @@ export const ReportsSection: React.FC<ReportsSectionProps> = ({
   }, [records, search, catFilter]);
 
   const exportRecord = (r: SoilRecord) => {
-    const text = `SMART SOIL Report\nID: ${r.id}\nDate: ${new Date(r.timestampMs).toLocaleString()}\nOrigin: ${r.origin}\nSource: ${r.dataSource}\nTitle: ${r.title}\n\n${r.fullDetails}`;
+    const text = `FarmerBuddy (SMART SOIL) Report\nID: ${r.id}\nDate: ${new Date(r.timestampMs).toLocaleString()}\nOrigin: ${r.origin}\nSource: ${r.dataSource}\nTitle: ${r.title}\n\n${r.fullDetails}`;
     const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `smart-soil-${r.id.slice(0, 8)}.txt`;
+    a.download = `farmerbuddy-${r.id.slice(0, 8)}.txt`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -73,8 +73,11 @@ export const ReportsSection: React.FC<ReportsSectionProps> = ({
     <main className="flex-1 px-page-margin py-gutter-md pb-28 flex flex-col gap-gutter-md">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
+          <span className="font-label text-label-sm uppercase tracking-wider text-light-primary">
+            FarmerBuddy · SMART SOIL
+          </span>
           <h1 className="font-headline text-headline-lg text-light-on-surface">Reports &amp; History</h1>
-          <p className="font-body text-body-sm text-light-on-surface-variant">{records.length} local-first record(s)</p>
+          <p className="font-body text-body-sm text-light-on-surface-variant">{records.length} saved record(s)</p>
         </div>
 
         <div className="flex gap-2">
@@ -102,7 +105,7 @@ export const ReportsSection: React.FC<ReportsSectionProps> = ({
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         placeholder="Search reports, crops, or sources..."
-        className="w-full rounded-full border-light-outline-variant bg-light-surface-container-lowest px-4 py-2.5 font-body text-body-md"
+        className="w-full rounded-full border border-light-outline-variant bg-light-surface-container-lowest px-4 py-2.5 font-body text-body-md"
       />
 
       <div className="flex gap-2 overflow-x-auto pb-1">

@@ -1,9 +1,19 @@
 package com.example.ui.viewmodel
 
 import android.app.Application
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Matrix
+import android.media.ExifInterface
 import android.net.Uri
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.FileOutputStream
+import java.util.UUID
 import com.example.data.ai.GeminiSoilService
 import com.example.data.ble.BleSoilManager
 import com.example.data.local.AppDatabase
@@ -196,27 +206,34 @@ class SmartSoilViewModel(application: Application) : AndroidViewModel(applicatio
             _soilScanState.value = AsyncUiState.Loading
             aiService.analyzeSoilImage(uri).onSuccess { result ->
                 _soilScanState.value = AsyncUiState.Success(result)
-                repository.saveRecord(
-                    SoilRecordEntity(
-                        category = RecordCategory.SOIL_SCAN.name,
-                        originBadge = RecordOrigin.AI_INTERPRETATION.name,
-                        isDemo = false,
-                        dataSource = "Gemini Vision Soil Scan",
-                        title = "Soil Scan — ${result.possibleSoilType}",
-                        summary = result.visibleCharacteristics,
-                        fullDetails = buildString {
-                            appendLine("Visible characteristics: ${result.visibleCharacteristics}")
-                            appendLine("Possible soil type: ${result.possibleSoilType}")
-                            appendLine("Organic matter indicators: ${result.organicMatterIndicators}")
-                            appendLine("Uncertainty: ${result.uncertaintyExplanation}")
-                            appendLine("Recommended additional tests: ${result.recommendedAdditionalTests.joinToString("; ")}")
-                        },
-                        imageUri = uri.toString()
-                    )
-                )
             }.onFailure { err ->
                 _soilScanState.value = AsyncUiState.Error(err.message ?: "Soil scan failed.")
             }
+        }
+    }
+
+    fun saveSoilScanResult(result: SoilScanResult, imageUri: Uri?) {
+        viewModelScope.launch {
+            val savedImageUri = persistImageToAppStorage(imageUri)
+            repository.saveRecord(
+                SoilRecordEntity(
+                    category = RecordCategory.SOIL_SCAN.name,
+                    originBadge = if (result.isDemo) RecordOrigin.DEMO_DATA.name else RecordOrigin.AI_INTERPRETATION.name,
+                    isDemo = result.isDemo,
+                    dataSource = if (result.isDemo) "Demo Soil Scan Sample" else "FarmerBuddy Vision Soil Scan",
+                    title = "${if (result.isDemo) "Demo " else ""}Soil Scan — ${result.possibleSoilType}",
+                    summary = result.visibleCharacteristics,
+                    fullDetails = buildString {
+                        appendLine("Visible characteristics: ${result.visibleCharacteristics}")
+                        appendLine("Possible soil type: ${result.possibleSoilType}")
+                        appendLine("Organic matter indicators: ${result.organicMatterIndicators}")
+                        appendLine("Uncertainty: ${result.uncertaintyExplanation}")
+                        appendLine("Recommended additional tests: ${result.recommendedAdditionalTests.joinToString("; ")}")
+                    },
+                    imageUri = savedImageUri
+                )
+            )
+            _statusToast.value = "Soil scan saved to Reports."
         }
     }
 
@@ -234,19 +251,6 @@ class SmartSoilViewModel(application: Application) : AndroidViewModel(applicatio
             isDemo = true
         )
         _soilScanState.value = AsyncUiState.Success(demo)
-        viewModelScope.launch {
-            repository.saveRecord(
-                SoilRecordEntity(
-                    category = RecordCategory.SOIL_SCAN.name,
-                    originBadge = RecordOrigin.DEMO_DATA.name,
-                    isDemo = true,
-                    dataSource = "Demo Soil Scan Sample",
-                    title = "Demo Soil Scan — ${demo.possibleSoilType}",
-                    summary = demo.visibleCharacteristics,
-                    fullDetails = "DEMO SAMPLE\n${demo.visibleCharacteristics}\n${demo.uncertaintyExplanation}"
-                )
-            )
-        }
     }
 
     fun resetSoilScan() {
@@ -285,13 +289,14 @@ class SmartSoilViewModel(application: Application) : AndroidViewModel(applicatio
         imageUri: Uri?
     ) {
         viewModelScope.launch {
+            val savedImageUri = persistImageToAppStorage(imageUri)
             settingsStore.updateCrop(confirmedCropName, confirmedStage)
             repository.saveRecord(
                 SoilRecordEntity(
                     category = RecordCategory.CROP_SCAN.name,
                     originBadge = if (result.isDemo) RecordOrigin.DEMO_DATA.name else RecordOrigin.AI_INTERPRETATION.name,
                     isDemo = result.isDemo,
-                    dataSource = if (result.isDemo) "Demo Crop Identification" else "Gemini Vision Crop Scan (User Confirmed)",
+                    dataSource = if (result.isDemo) "Demo Crop Identification" else "FarmerBuddy Vision Crop Scan (Confirmed)",
                     title = "Confirmed Crop: $confirmedCropName ($confirmedStage)",
                     summary = "AI suggestion: ${result.possibleCropName} (${result.confidenceLevel} confidence)",
                     fullDetails = buildString {
@@ -300,7 +305,7 @@ class SmartSoilViewModel(application: Application) : AndroidViewModel(applicatio
                         appendLine("Identifying features: ${result.identifyingFeatures}")
                         appendLine("Uncertainty notes: ${result.uncertaintyNotes}")
                     },
-                    imageUri = imageUri?.toString()
+                    imageUri = savedImageUri
                 )
             )
             _statusToast.value = "Confirmed & saved active crop: $confirmedCropName"
@@ -318,27 +323,35 @@ class SmartSoilViewModel(application: Application) : AndroidViewModel(applicatio
             _plantHealthState.value = AsyncUiState.Loading
             aiService.analyzePlantHealthImage(uri, crop).onSuccess { result ->
                 _plantHealthState.value = AsyncUiState.Success(result)
-                repository.saveRecord(
-                    SoilRecordEntity(
-                        category = RecordCategory.PLANT_HEALTH_SCAN.name,
-                        originBadge = RecordOrigin.AI_INTERPRETATION.name,
-                        isDemo = false,
-                        dataSource = "Gemini Vision Plant Health Check",
-                        title = "Plant Health Check — $crop",
-                        summary = result.visibleSymptoms,
-                        fullDetails = buildString {
-                            appendLine("Visible symptoms: ${result.visibleSymptoms}")
-                            appendLine("Possible explanations: ${result.possibleExplanations.joinToString("; ")}")
-                            appendLine("Suggested field checks: ${result.suggestedChecks.joinToString("; ")}")
-                            appendLine("Cautious next steps: ${result.cautiousNextSteps.joinToString("; ")}")
-                            appendLine("Limitations: ${result.diagnosisLimitations}")
-                        },
-                        imageUri = uri.toString()
-                    )
-                )
             }.onFailure { err ->
                 _plantHealthState.value = AsyncUiState.Error(err.message ?: "Plant health scan failed.")
             }
+        }
+    }
+
+    fun savePlantHealthResult(result: PlantHealthResult, imageUri: Uri?) {
+        val crop = preferences.value.selectedCropName
+        viewModelScope.launch {
+            val savedImageUri = persistImageToAppStorage(imageUri)
+            repository.saveRecord(
+                SoilRecordEntity(
+                    category = RecordCategory.PLANT_HEALTH_SCAN.name,
+                    originBadge = if (result.isDemo) RecordOrigin.DEMO_DATA.name else RecordOrigin.AI_INTERPRETATION.name,
+                    isDemo = result.isDemo,
+                    dataSource = if (result.isDemo) "Demo Plant Health Sample" else "FarmerBuddy Vision Plant Check",
+                    title = "${if (result.isDemo) "Demo " else ""}Plant Health Check — $crop",
+                    summary = result.visibleSymptoms,
+                    fullDetails = buildString {
+                        appendLine("Visible symptoms: ${result.visibleSymptoms}")
+                        appendLine("Possible explanations: ${result.possibleExplanations.joinToString("; ")}")
+                        appendLine("Suggested field checks: ${result.suggestedChecks.joinToString("; ")}")
+                        appendLine("Cautious next steps: ${result.cautiousNextSteps.joinToString("; ")}")
+                        appendLine("Limitations: ${result.diagnosisLimitations}")
+                    },
+                    imageUri = savedImageUri
+                )
+            )
+            _statusToast.value = "Plant health check saved to Reports."
         }
     }
 
@@ -364,19 +377,6 @@ class SmartSoilViewModel(application: Application) : AndroidViewModel(applicatio
             isDemo = true
         )
         _plantHealthState.value = AsyncUiState.Success(demo)
-        viewModelScope.launch {
-            repository.saveRecord(
-                SoilRecordEntity(
-                    category = RecordCategory.PLANT_HEALTH_SCAN.name,
-                    originBadge = RecordOrigin.DEMO_DATA.name,
-                    isDemo = true,
-                    dataSource = "Demo Plant Health Sample",
-                    title = "Demo Plant Health Check",
-                    summary = demo.visibleSymptoms,
-                    fullDetails = "DEMO SAMPLE\n${demo.visibleSymptoms}\n${demo.diagnosisLimitations}"
-                )
-            )
-        }
     }
 
     fun resetPlantHealth() {
@@ -395,6 +395,10 @@ class SmartSoilViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    fun resetNpkLab() {
+        _npkLabState.value = AsyncUiState.Idle
+    }
+
     fun loadDemoLabReport() {
         _npkLabState.value = AsyncUiState.Success(
             NpkLabExtractionResult(
@@ -405,6 +409,7 @@ class SmartSoilViewModel(application: Application) : AndroidViewModel(applicatio
                 labSource = "Illustrative Sample Soil Health Card",
                 reportDate = "2026-10-15",
                 extractionNotes = "DEMO SAMPLE: Verify every extracted number against your printed laboratory card before saving.",
+                isUnreadable = false,
                 isDemo = true
             )
         )
@@ -421,6 +426,7 @@ class SmartSoilViewModel(application: Application) : AndroidViewModel(applicatio
         originalImageUri: Uri?
     ) {
         viewModelScope.launch {
+            val savedImageUri = persistImageToAppStorage(originalImageUri)
             repository.saveRecord(
                 SoilRecordEntity(
                     category = RecordCategory.NPK_REPORT.name,
@@ -436,11 +442,11 @@ class SmartSoilViewModel(application: Application) : AndroidViewModel(applicatio
                         appendLine("Available Nitrogen (N): $nitrogen $unit")
                         appendLine("Available Phosphorus (P): $phosphorus $unit")
                         appendLine("Available Potassium (K): $potassium $unit")
-                        if (originalImageUri != null) {
-                            appendLine("Original Uploaded Image Preserved: $originalImageUri")
+                        if (savedImageUri != null) {
+                            appendLine("Original Uploaded Image Preserved: $savedImageUri")
                         }
                     },
-                    imageUri = originalImageUri?.toString()
+                    imageUri = savedImageUri
                 )
             )
             _statusToast.value = "Lab NPK report saved to Reports."
@@ -456,28 +462,93 @@ class SmartSoilViewModel(application: Application) : AndroidViewModel(applicatio
             _npkRegionalState.value = AsyncUiState.Loading
             aiService.fetchRegionalNpkReference(crop.trim(), region.trim(), soilType.trim()).onSuccess { res ->
                 _npkRegionalState.value = AsyncUiState.Success(res)
-                repository.saveRecord(
-                    SoilRecordEntity(
-                        category = RecordCategory.NPK_REPORT.name,
-                        originBadge = RecordOrigin.REFERENCE_ESTIMATE.name,
-                        isDemo = false,
-                        dataSource = res.source,
-                        title = "Regional NPK Reference — ${res.crop} (${res.region})",
-                        summary = "REFERENCE ESTIMATE — NOT AN ACTUAL SOIL TEST. ${res.sufficiencyStatus}",
-                        fullDetails = buildString {
-                            appendLine("REFERENCE ESTIMATE — NOT AN ACTUAL SOIL TEST.")
-                            appendLine("Crop: ${res.crop}")
-                            appendLine("Region: ${res.region}")
-                            appendLine("Soil Type: ${res.soilType}")
-                            appendLine("Source: ${res.source}")
-                            appendLine("Reference Date: ${res.referenceDate}")
-                            appendLine("Overview: ${res.nutrientOverview}")
-                            appendLine("Limitations: ${res.limitations}")
-                        }
-                    )
-                )
             }.onFailure { err ->
                 _npkRegionalState.value = AsyncUiState.Error(err.message ?: "Could not fetch regional reference.")
+            }
+        }
+    }
+
+    fun saveRegionalNpkReference(res: NpkRegionalReferenceResult) {
+        viewModelScope.launch {
+            repository.saveRecord(
+                SoilRecordEntity(
+                    category = RecordCategory.NPK_REPORT.name,
+                    originBadge = RecordOrigin.REFERENCE_ESTIMATE.name,
+                    isDemo = false,
+                    dataSource = res.source,
+                    title = "Regional NPK Reference — ${res.crop} (${res.region})",
+                    summary = "REFERENCE ESTIMATE — NOT AN ACTUAL SOIL TEST. ${res.sufficiencyStatus}",
+                    fullDetails = buildString {
+                        appendLine("REFERENCE ESTIMATE — NOT AN ACTUAL SOIL TEST.")
+                        appendLine("Crop: ${res.crop}")
+                        appendLine("Region: ${res.region}")
+                        appendLine("Soil Type: ${res.soilType}")
+                        appendLine("Source: ${res.source}")
+                        appendLine("Reference Date: ${res.referenceDate}")
+                        appendLine("Overview: ${res.nutrientOverview}")
+                        appendLine("Limitations: ${res.limitations}")
+                    }
+                )
+            )
+            _statusToast.value = "Regional NPK guide saved to Reports."
+        }
+    }
+
+    private suspend fun persistImageToAppStorage(sourceUri: Uri?): String? {
+        if (sourceUri == null) return null
+        return withContext(Dispatchers.IO) {
+            try {
+                val app = getApplication<Application>()
+                val dir = File(app.filesDir, "saved_scans").apply { mkdirs() }
+                val dest = File(dir, "scan_${UUID.randomUUID()}.jpg")
+
+                val orientation = app.contentResolver.openInputStream(sourceUri)?.use { stream ->
+                    ExifInterface(stream).getAttributeInt(
+                        ExifInterface.TAG_ORIENTATION,
+                        ExifInterface.ORIENTATION_NORMAL
+                    )
+                } ?: ExifInterface.ORIENTATION_NORMAL
+
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                app.contentResolver.openInputStream(sourceUri)?.use { stream ->
+                    BitmapFactory.decodeStream(stream, null, bounds)
+                }
+                if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@withContext null
+
+                var sampleSize = 1
+                while (bounds.outWidth / sampleSize > 1600 || bounds.outHeight / sampleSize > 1600) {
+                    sampleSize *= 2
+                }
+                val opts = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+                val decoded = app.contentResolver.openInputStream(sourceUri)?.use { stream ->
+                    BitmapFactory.decodeStream(stream, null, opts)
+                } ?: return@withContext null
+
+                val degrees = when (orientation) {
+                    ExifInterface.ORIENTATION_ROTATE_90 -> 90f
+                    ExifInterface.ORIENTATION_ROTATE_180 -> 180f
+                    ExifInterface.ORIENTATION_ROTATE_270 -> 270f
+                    else -> 0f
+                }
+                val scale = minOf(900f / decoded.width, 900f / decoded.height, 1f)
+                val finalBitmap = if (scale < 1f || degrees != 0f) {
+                    val m = Matrix().apply {
+                        if (scale < 1f) postScale(scale, scale)
+                        if (degrees != 0f) postRotate(degrees)
+                    }
+                    Bitmap.createBitmap(decoded, 0, 0, decoded.width, decoded.height, m, true).also {
+                        if (it != decoded) decoded.recycle()
+                    }
+                } else decoded
+
+                FileOutputStream(dest).use { out ->
+                    finalBitmap.compress(Bitmap.CompressFormat.JPEG, 82, out)
+                }
+                finalBitmap.recycle()
+                Uri.fromFile(dest).toString()
+            } catch (e: Exception) {
+                Log.w("SmartSoilViewModel", "Could not persist scan image copy: ${e.message}")
+                null
             }
         }
     }
@@ -488,29 +559,41 @@ class SmartSoilViewModel(application: Application) : AndroidViewModel(applicatio
         val reading = activeReading.value
         val records = allRecords.value
         val latestSoil = records.firstOrNull { it.category == RecordCategory.SOIL_SCAN.name }
-        val latestNpk = records.firstOrNull { it.category == RecordCategory.NPK_REPORT.name }
+        val latestPlant = records.firstOrNull { it.category == RecordCategory.PLANT_HEALTH_SCAN.name }
+        val latestLabNpk = records.firstOrNull {
+            it.category == RecordCategory.NPK_REPORT.name && it.originBadge == RecordOrigin.LAB_REPORT.name
+        }
+        val latestRegNpk = records.firstOrNull {
+            it.category == RecordCategory.NPK_REPORT.name && it.originBadge == RecordOrigin.REFERENCE_ESTIMATE.name
+        }
 
         return buildString {
             appendLine("Crop: ${prefs.selectedCropName} (Growth Stage: ${prefs.growthStage})")
             appendLine("Configured Moisture Target: ${prefs.customMinMoisture}%-${prefs.customMaxMoisture}%, Preferred pH: ${prefs.customMinPh}-${prefs.customMaxPh}")
             if (reading != null) {
-                val tag = if (reading.isDemo) "DEMO DATA (Illustrative only)" else "LIVE ESP32 BLE"
+                val tag = if (reading.isDemo) "DEMO DATA (Illustrative only — NOT live reading)" else "LIVE ESP32 BLE (Verified)"
                 appendLine("Sensor Source: $tag")
                 appendLine("Moisture: ${reading.moisturePercent?.let { "$it%" } ?: "Unavailable"} (Raw ADC: ${reading.moistureRaw ?: "N/A"})")
                 appendLine("Soil pH: ${reading.ph ?: "Unavailable"}")
                 appendLine("Soil Temperature: ${reading.temperatureC?.let { "$it°C" } ?: "Unavailable"}")
             } else {
-                appendLine("Sensor Readings: ESP32 Disconnected / Unavailable")
+                appendLine("Sensor Readings: Not connected / Unavailable")
             }
             if (latestSoil != null) {
                 appendLine("Latest Soil Scan (${latestSoil.originBadge}): ${latestSoil.title} — ${latestSoil.summary}")
             } else {
                 appendLine("Latest Soil Scan: None recorded yet")
             }
-            if (latestNpk != null) {
-                appendLine("Latest NPK Info (${latestNpk.originBadge}): ${latestNpk.title} — ${latestNpk.summary}")
+            if (latestPlant != null) {
+                appendLine("Latest Plant Health (${latestPlant.originBadge}): ${latestPlant.title} — ${latestPlant.summary}")
+            }
+            if (latestLabNpk != null) {
+                appendLine("Verified Lab NPK Report: ${latestLabNpk.title} — ${latestLabNpk.summary}")
             } else {
-                appendLine("Latest NPK Info: No lab report or regional reference recorded yet")
+                appendLine("Verified Lab NPK Report: None uploaded yet")
+            }
+            if (latestRegNpk != null) {
+                appendLine("Regional Reference Estimate (NOT A LAB TEST): ${latestRegNpk.title} — ${latestRegNpk.summary}")
             }
         }
     }

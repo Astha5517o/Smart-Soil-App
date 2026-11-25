@@ -67,23 +67,28 @@ fun ScanHubScreen(
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(
-                text = "Scanning System",
+                text = "FARMERBUDDY · SMART SOIL",
+                style = MaterialTheme.typography.labelSmall,
+                color = LightPrimary
+            )
+            Text(
+                text = "Scan & Check",
                 style = MaterialTheme.typography.headlineLarge,
                 color = LightOnSurface
             )
             Text(
-                text = "Choose a visual or Soil Health Card scan. Active crop: $selectedCropName",
+                text = "Choose what you want to scan · Active crop: $selectedCropName",
                 style = MaterialTheme.typography.bodyMedium,
                 color = LightOnSurfaceVariant
             )
         }
 
         ScanOptionCard(
-            title = "A. Soil Scan",
-            badge = "Gemini Vision",
+            title = "Soil Scan",
+            badge = "Soil Photo",
             badgeBg = SoilContainer,
             badgeFg = OnSoilContainer,
-            description = "Upload or capture a topsoil photo to describe visible characteristics, possible soil type, and recommended follow-up tests. Never claims to measure pH or NPK from a photo.",
+            description = "Take a photo of soil to check texture and type.",
             icon = Icons.Default.Terrain,
             iconBg = SoilContainer,
             iconTint = OnSoilContainer,
@@ -92,11 +97,11 @@ fun ScanHubScreen(
         )
 
         ScanOptionCard(
-            title = "B. Crop Identification",
-            badge = "Confirm Crop",
+            title = "Identify Crop",
+            badge = "Plant Photo",
             badgeBg = LightSecondaryContainer,
             badgeFg = LightOnSecondaryContainer,
-            description = "Identify a crop from leaf and stem features with confidence & uncertainty notes. Requires your confirmation before saving to your crop profile.",
+            description = "Identify your crop and confirm its growth stage.",
             icon = Icons.Default.Eco,
             iconBg = LightSecondaryContainer,
             iconTint = LightOnSecondaryContainer,
@@ -105,11 +110,11 @@ fun ScanHubScreen(
         )
 
         ScanOptionCard(
-            title = "C. Plant Health Scan",
-            badge = "Cautious Check",
+            title = "Plant Health",
+            badge = "Leaf Photo",
             badgeBg = WarningContainer,
             badgeFg = OnWarningContainer,
-            description = "Inspect visible leaf symptoms, possible explanations, and safe field checks. Clearly states image-only limitations without claiming a definitive diagnosis.",
+            description = "Check leaf spots or yellowing and safe next steps.",
             icon = Icons.Default.Healing,
             iconBg = WarningContainer,
             iconTint = OnWarningContainer,
@@ -118,11 +123,11 @@ fun ScanHubScreen(
         )
 
         ScanOptionCard(
-            title = "D. NPK Report",
-            badge = "Lab or Regional",
+            title = "NPK Report",
+            badge = "Lab / Guide",
             badgeBg = SuccessContainer,
             badgeFg = OnSuccessContainer,
-            description = "Method 1: Upload a Soil Health Card / lab report to extract & edit N, P, K values. Method 2: Check a cautious regional reference estimate if no lab report is available.",
+            description = "Scan a Soil Health Card or check regional NPK.",
             icon = Icons.Default.Biotech,
             iconBg = LightPrimary,
             iconTint = LightOnPrimary,

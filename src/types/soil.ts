@@ -88,6 +88,7 @@ export interface NpkLabResult {
   labSource: string;
   reportDate: string;
   extractionNotes: string;
+  isUnreadable?: boolean;
   isDemo?: boolean;
 }
 

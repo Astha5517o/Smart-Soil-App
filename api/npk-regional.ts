@@ -1,15 +1,20 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { GEMINI_MODEL, Type, parseJsonSafe, requirePostAndClient } from './_shared.js';
+import {
+  GEMINI_MODEL,
+  Type,
+  extractResponseText,
+  handleGeminiError,
+  normalizeString,
+  parseJsonSafe,
+  parseRequestBody,
+  requirePostAndClient,
+} from './_shared.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ai = requirePostAndClient(req, res);
   if (!ai) return;
 
-  const { crop, region, soilType } = (req.body ?? {}) as {
-    crop?: unknown;
-    region?: unknown;
-    soilType?: unknown;
-  };
+  const { crop, region, soilType } = parseRequestBody(req);
 
   if (typeof crop !== 'string' || !crop.trim() || typeof region !== 'string' || !region.trim()) {
     return res.status(400).json({ error: 'Please provide both Crop and State/District/Region.' });
@@ -28,7 +33,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           parts: [
             {
               text: [
-                `Provide a cautious regional soil nutrient reference overview for Crop: ${cleanCrop}, Region: ${cleanRegion}, Soil Type: ${cleanSoil}.`,
+                `Provide a cautious regional soil nutrient reference overview for FarmerBuddy — Crop: ${cleanCrop}, Region: ${cleanRegion}, Soil Type: ${cleanSoil}.`,
                 'STRICT SCIENTIFIC RULES:',
                 '- NEVER invent numerical field NPK values.',
                 '- NEVER present crop nutrient requirements as measured soil nutrient levels.',
@@ -63,15 +68,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       },
     });
 
-    const parsed = parseJsonSafe(response.text);
+    const parsed = parseJsonSafe(extractResponseText(response));
+    const nutrientOverview = normalizeString(parsed.nutrientOverview, '');
+    if (!nutrientOverview) {
+      throw new Error('Incomplete regional NPK payload from Gemini.');
+    }
+
     return res.status(200).json({
       crop: cleanCrop,
       region: cleanRegion,
       soilType: cleanSoil,
-      ...parsed,
+      sufficiencyStatus: normalizeString(parsed.sufficiencyStatus, 'Regional reference overview (not a field measurement)'),
+      nutrientOverview,
+      source: normalizeString(parsed.source, 'General Agricultural Extension Reference'),
+      referenceDate: normalizeString(parsed.referenceDate, 'General Reference'),
+      limitations: normalizeString(
+        parsed.limitations,
+        'Regional averages vary widely by farm plot; confirm with a laboratory Soil Health Card test.'
+      ),
+      isInsufficientInfo: Boolean(parsed.isInsufficientInfo),
     });
   } catch (err) {
-    console.error('Regional NPK lookup failed:', err instanceof Error ? err.message : 'Unknown error');
-    return res.status(502).json({ error: 'Unable to fetch regional reference right now. Please try again.' });
+    return handleGeminiError(
+      res,
+      'Regional NPK lookup',
+      err,
+      'Unable to fetch regional reference right now. Please try again.'
+    );
   }
 }
