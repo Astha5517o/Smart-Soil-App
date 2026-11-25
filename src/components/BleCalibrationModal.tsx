@@ -54,7 +54,7 @@ export const BleCalibrationModal: React.FC<BleCalibrationModalProps> = ({
         {/* Web Bluetooth Connection Card */}
         <section className="bg-light-surface-container-lowest rounded-lg clay-card p-gutter-md flex flex-col gap-2">
           <div className="flex items-center justify-between">
-            <strong className="font-headline text-title-md">ESP32 Web Bluetooth</strong>
+            <strong className="font-headline text-title-md">Nearby BLE Device Scanner</strong>
             <span className="px-2.5 py-0.5 rounded-full bg-light-surface-container font-label text-label-sm">
               {bleStatus.toUpperCase()}
             </span>
@@ -72,7 +72,7 @@ export const BleCalibrationModal: React.FC<BleCalibrationModalProps> = ({
             Char: {draft.calibration.characteristicUuid}
           </p>
 
-          {deviceName && <p className="font-body text-body-sm text-light-primary">Device: {deviceName}</p>}
+          <p className="font-body text-body-sm text-light-on-surface-variant">Tap scan to open the browser BLE device picker. Select your powered-on ESP32 (for example, SMART_SOIL) to connect.</p>\n          {deviceName && <p className="font-body text-body-sm text-light-primary">Selected device: {deviceName}</p>}
           {lastReading && (
             <p className="font-mono text-[11px] text-light-on-surface-variant">
               Last packet: {new Date(lastReading.timestampMs).toLocaleTimeString()}
@@ -96,7 +96,7 @@ export const BleCalibrationModal: React.FC<BleCalibrationModalProps> = ({
                 onClick={onConnectBle}
                 className="flex-1 min-h-[44px] rounded-full bg-light-primary text-light-on-primary clay-btn-primary font-label text-label-md disabled:opacity-50"
               >
-                {bleStatus === 'connecting' ? 'Connecting...' : 'Connect ESP32'}
+                {bleStatus === 'connecting' ? 'Searching / connecting...' : 'Scan nearby BLE devices'}
               </button>
             )}
           </div>
