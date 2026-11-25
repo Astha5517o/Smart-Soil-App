@@ -32,6 +32,10 @@ export const App: React.FC = () => {
   const [showBleModal, setShowBleModal] = useState(false);
 
   const gattServerRef = useRef<BluetoothRemoteGATTServer | null>(null);
+  const bleDeviceRef = useRef<BluetoothDevice | null>(null);
+  const bleCharacteristicRef = useRef<BluetoothRemoteGATTCharacteristic | null>(null);
+  const notificationHandlerRef = useRef<((event: Event) => void) | null>(null);
+  const disconnectHandlerRef = useRef<(() => void) | null>(null);
 
   const activeReading: SensorReading | null = useMemo(() => {
     if (displayMode === 'live') {
@@ -76,32 +80,82 @@ export const App: React.FC = () => {
   const connectBle = async () => {
     if (!isWebBluetoothSupported() || !navigator.bluetooth) {
       setBleStatus('unsupported');
-      setBleError('Web Bluetooth is not supported in this browser.');
+      setBleError('Web Bluetooth is unavailable. Open this HTTPS site in Chrome or Edge on a supported device.');
       return;
     }
+
+    const serviceUuid = settings.calibration.serviceUuid.trim();
+    const characteristicUuid = settings.calibration.characteristicUuid.trim();
     setBleError(null);
     setBleStatus('connecting');
+
     try {
+      // Accept all nearby BLE devices so discovery does not depend on the
+      // ESP32 advertising its custom service UUID. optionalServices grants
+      // this page access to the custom service after the user selects it.
       const device = await navigator.bluetooth.requestDevice({
-        filters: [{ services: [settings.calibration.serviceUuid] }],
-        optionalServices: [settings.calibration.serviceUuid],
+        acceptAllDevices: true,
+        optionalServices: [serviceUuid],
       });
-      setBleDeviceName(device.name || 'SMART_SOIL_ESP32');
-      device.addEventListener('gattserverdisconnected', () => {
+
+      // Clean up any previous device listeners before switching devices.
+      if (bleDeviceRef.current && disconnectHandlerRef.current) {
+        bleDeviceRef.current.removeEventListener(
+          'gattserverdisconnected',
+          disconnectHandlerRef.current
+        );
+      }
+      bleDeviceRef.current = device;
+      setBleDeviceName(device.name || 'Unnamed BLE device');
+
+      const onDisconnected = () => {
         setBleStatus('disconnected');
-        setBleError('ESP32 disconnected. Reconnect when ready.');
-      });
-      const server = await device.gatt?.connect();
-      if (!server) throw new Error('GATT server unavailable.');
+        setLiveReading(null);
+        setBleError('ESP32 disconnected. Check its power and reconnect.');
+        gattServerRef.current = null;
+        bleCharacteristicRef.current = null;
+        notificationHandlerRef.current = null;
+      };
+      disconnectHandlerRef.current = onDisconnected;
+      device.addEventListener('gattserverdisconnected', onDisconnected);
+
+      if (!device.gatt) {
+        throw new Error('This BLE device does not expose a GATT server.');
+      }
+      const server = await device.gatt.connect();
       gattServerRef.current = server;
 
-      const service = await server.getPrimaryService(settings.calibration.serviceUuid);
-      const char = await service.getCharacteristic(settings.calibration.characteristicUuid);
+      let service: BluetoothRemoteGATTService;
+      try {
+        service = await server.getPrimaryService(serviceUuid);
+      } catch {
+        throw new Error(
+          `Service not found: ${serviceUuid}. Check that the ESP32 firmware uses this exact service UUID and exposes it as a primary service.`
+        );
+      }
 
-      const handlePacket = (view: DataView | undefined) => {
+      let characteristic: BluetoothRemoteGATTCharacteristic;
+      try {
+        characteristic = await service.getCharacteristic(characteristicUuid);
+      } catch {
+        throw new Error(
+          `Characteristic not found: ${characteristicUuid}. Check the characteristic UUID in the ESP32 firmware.`
+        );
+      }
+
+      if (!characteristic.properties.notify && !characteristic.properties.read) {
+        throw new Error('The sensor characteristic must support Notify or Read.');
+      }
+
+      bleCharacteristicRef.current = characteristic;
+
+      const handlePacket = (view: DataView | null | undefined) => {
         if (!view) return;
-        const text = new TextDecoder().decode(view);
-        const parsed = parseAndValidateSensorJson(text, settings.calibration);
+        const bytes = new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
+        const packet = new TextDecoder().decode(bytes).replace(/\\0+$/g, '').trim();
+        if (!packet) return;
+
+        const parsed = parseAndValidateSensorJson(packet, settings.calibration);
         if (parsed.ok) {
           setLiveReading(parsed.reading);
           setBleError(parsed.reading.validationWarnings.join(' ') || null);
@@ -110,27 +164,58 @@ export const App: React.FC = () => {
         }
       };
 
-      char.addEventListener('characteristicvaluechanged', (ev: Event) => {
-        const target = ev.target as BluetoothRemoteGATTCharacteristic | null;
-        handlePacket(target?.value);
-      });
-      await char.startNotifications();
-      const initial = await char.readValue().catch(() => undefined);
-      handlePacket(initial);
+      if (characteristic.properties.notify) {
+        const onValueChanged = (event: Event) => {
+          const target = event.target as BluetoothRemoteGATTCharacteristic | null;
+          handlePacket(target?.value);
+        };
+        notificationHandlerRef.current = onValueChanged;
+        characteristic.addEventListener('characteristicvaluechanged', onValueChanged);
+        await characteristic.startNotifications();
+      }
+
+      if (characteristic.properties.read) {
+        const initial = await characteristic.readValue();
+        handlePacket(initial);
+      }
 
       setBleStatus('connected');
       setDisplayMode('live');
+      setBleError(null);
     } catch (err) {
-      setBleStatus('error');
-      setBleError(err instanceof Error ? err.message : 'Bluetooth connection failed.');
+      const error = err as DOMException;
+      if (error?.name === 'NotFoundError') {
+        // The chooser was closed or no device was selected.
+        setBleStatus('disconnected');
+        setBleError('No device selected. Open Connect ESP32 and choose your SMART_SOIL device.');
+      } else {
+        setBleStatus('error');
+        setBleError(err instanceof Error ? err.message : 'Bluetooth connection failed.');
+      }
+      gattServerRef.current?.disconnect();
+      gattServerRef.current = null;
     }
   };
 
   const disconnectBle = () => {
+    const characteristic = bleCharacteristicRef.current;
+    const handler = notificationHandlerRef.current;
+    if (characteristic && handler) {
+      characteristic.removeEventListener('characteristicvaluechanged', handler);
+    }
+    bleDeviceRef.current?.removeEventListener(
+      'gattserverdisconnected',
+      disconnectHandlerRef.current as EventListener
+    );
     gattServerRef.current?.disconnect();
     gattServerRef.current = null;
+    bleDeviceRef.current = null;
+    bleCharacteristicRef.current = null;
+    notificationHandlerRef.current = null;
+    disconnectHandlerRef.current = null;
     setBleStatus(isWebBluetoothSupported() ? 'disconnected' : 'unsupported');
     setLiveReading(null);
+    setBleError(null);
   };
 
   const handleSaveRecord = (rec: Omit<SoilRecord, 'id' | 'timestampMs'>) => {
