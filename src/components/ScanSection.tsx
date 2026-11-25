@@ -1,5 +1,10 @@
-import React, { useEffect, useState } from 'react';
-import { compressImageFile, createStorageThumbnail, soilApi } from '../services/apiService';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  compressImageFile,
+  createStorageThumbnail,
+  soilApi,
+  type ApiHealthStatus,
+} from '../services/apiService';
 import {
   GROWTH_STAGES,
   type CropIdResult,
@@ -65,12 +70,36 @@ export const ScanSection: React.FC<ScanSectionProps> = ({
   const [regRes, setRegRes] = useState<NpkRegionalResult | null>(null);
   const [regSaved, setRegSaved] = useState(false);
 
+  const [apiHealth, setApiHealth] = useState<ApiHealthStatus | null>(null);
+  const [checkingHealth, setCheckingHealth] = useState(false);
+  const [savingRecord, setSavingRecord] = useState(false);
+
+  const scanRequestIdRef = useRef(0);
+  const regRequestIdRef = useRef(0);
+
+  const runHealthCheck = async (probe = false) => {
+    setCheckingHealth(true);
+    try {
+      const status = await soilApi.checkHealth(probe);
+      setApiHealth(status);
+    } finally {
+      setCheckingHealth(false);
+    }
+  };
+
   useEffect(() => {
+    void runHealthCheck(false);
+  }, []);
+
+  useEffect(() => {
+    scanRequestIdRef.current += 1;
+    regRequestIdRef.current += 1;
     setError(null);
     setLoading(false);
   }, [activeSubView]);
 
   const clearScanOutputs = () => {
+    scanRequestIdRef.current += 1;
     setError(null);
     setSoilRes(null);
     setSoilSaved(false);
@@ -108,27 +137,35 @@ export const ScanSection: React.FC<ScanSectionProps> = ({
       return;
     }
     clearScanOutputs();
+    const requestId = ++scanRequestIdRef.current;
     setLoading(true);
     try {
       if (kind === 'soil') {
         const res = await soilApi.analyzeSoil(preparedImage.base64, preparedImage.mimeType);
+        if (requestId !== scanRequestIdRef.current) return;
         setSoilRes(res);
       } else if (kind === 'crop') {
         const res = await soilApi.identifyCrop(preparedImage.base64, preparedImage.mimeType);
+        if (requestId !== scanRequestIdRef.current) return;
         setCropRes(res);
         setConfirmedCrop(res.possibleCropName);
         setConfirmedStage(res.suggestedGrowthStage || GROWTH_STAGES[1]);
       } else if (kind === 'plant') {
         const res = await soilApi.analyzePlantHealth(preparedImage.base64, preparedImage.mimeType, cropName);
+        if (requestId !== scanRequestIdRef.current) return;
         setPlantRes(res);
       } else {
         const res = await soilApi.extractNpkReport(preparedImage.base64, preparedImage.mimeType);
+        if (requestId !== scanRequestIdRef.current) return;
         setLabRes(res);
       }
     } catch (err) {
+      if (requestId !== scanRequestIdRef.current) return;
       setError(err instanceof Error ? err.message : 'Analysis failed. Please try again.');
     } finally {
-      setLoading(false);
+      if (requestId === scanRequestIdRef.current) {
+        setLoading(false);
+      }
     }
   };
 
@@ -183,15 +220,53 @@ export const ScanSection: React.FC<ScanSectionProps> = ({
   if (activeSubView === 'hub') {
     return (
       <main className="flex-1 px-page-margin py-gutter-md pb-28 flex flex-col gap-gutter-md">
-        <div>
-          <span className="font-label text-label-sm uppercase tracking-wider text-light-primary">
-            FarmerBuddy · SMART SOIL
-          </span>
-          <h1 className="font-headline text-headline-lg text-light-on-surface">Scan &amp; Check</h1>
-          <p className="font-body text-body-md text-light-on-surface-variant">
-            Choose what you want to scan · Active crop: <strong className="text-light-on-surface">{cropName}</strong>
-          </p>
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <span className="font-label text-label-sm uppercase tracking-wider text-light-primary">
+              FarmerBuddy · SMART SOIL
+            </span>
+            <h1 className="font-headline text-headline-lg text-light-on-surface">Scan &amp; Check</h1>
+            <p className="font-body text-body-md text-light-on-surface-variant">
+              Choose what you want to scan · Active crop: <strong className="text-light-on-surface">{cropName}</strong>
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled={checkingHealth}
+            onClick={() => void runHealthCheck(true)}
+            title={apiHealth?.message || 'Check AI API connection'}
+            className={`min-h-[36px] px-3 py-1 rounded-full font-label text-label-sm flex items-center gap-1.5 ${
+              apiHealth?.ok
+                ? 'bg-success-container text-on-success-container'
+                : apiHealth === null
+                ? 'bg-light-surface-container text-light-on-surface-variant'
+                : 'bg-warning-container text-on-warning-container'
+            }`}
+          >
+            <span
+              className={`w-2 h-2 rounded-full ${
+                apiHealth?.ok ? 'bg-success' : apiHealth === null ? 'bg-light-outline' : 'bg-light-error'
+              }`}
+            />
+            {checkingHealth || apiHealth === null
+              ? 'Checking AI...'
+              : apiHealth.ok
+              ? apiHealth.liveVerified
+                ? 'AI Verified'
+                : 'AI Connected'
+              : !apiHealth.apiReachable
+              ? 'API Offline'
+              : !apiHealth.hasGeminiKey
+              ? 'API Key Needed'
+              : 'AI Error'}
+          </button>
         </div>
+
+        {apiHealth && !apiHealth.ok && (
+          <div className="bg-warning-container text-on-warning-container rounded-lg p-gutter-sm font-body text-body-sm">
+            {apiHealth.message}
+          </div>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-gutter-md">
           {[
@@ -484,20 +559,25 @@ export const ScanSection: React.FC<ScanSectionProps> = ({
           <div className="flex flex-wrap gap-2 pt-2">
             <button
               type="button"
-              disabled={soilSaved}
+              disabled={soilSaved || savingRecord}
               onClick={async () => {
-                const thumb = preparedImage ? await createStorageThumbnail(preparedImage.previewUrl) : undefined;
-                const savedOk = onSaveRecord({
-                  category: 'SOIL_SCAN',
-                  origin: soilRes.isDemo ? 'DEMO_DATA' : 'AI_INTERPRETATION',
-                  isDemo: Boolean(soilRes.isDemo),
-                  dataSource: soilRes.isDemo ? 'Demo Soil Scan Sample' : 'FarmerBuddy Vision Soil Scan',
-                  title: `${soilRes.isDemo ? 'Demo ' : ''}Soil Scan — ${soilRes.possibleSoilType}`,
-                  summary: soilRes.visibleCharacteristics,
-                  fullDetails: `Visible: ${soilRes.visibleCharacteristics}\nPossible type: ${soilRes.possibleSoilType}\nOrganic matter: ${soilRes.organicMatterIndicators}\nNote: ${soilRes.uncertaintyExplanation}\nTests: ${soilRes.recommendedAdditionalTests.join('; ')}`,
-                  imageDataUrl: thumb,
-                });
-                if (savedOk) setSoilSaved(true);
+                setSavingRecord(true);
+                try {
+                  const thumb = preparedImage ? await createStorageThumbnail(preparedImage.previewUrl) : undefined;
+                  const savedOk = onSaveRecord({
+                    category: 'SOIL_SCAN',
+                    origin: soilRes.isDemo ? 'DEMO_DATA' : 'AI_INTERPRETATION',
+                    isDemo: Boolean(soilRes.isDemo),
+                    dataSource: soilRes.isDemo ? 'Demo Soil Scan Sample' : 'FarmerBuddy Vision Soil Scan',
+                    title: `${soilRes.isDemo ? 'Demo ' : ''}Soil Scan — ${soilRes.possibleSoilType}`,
+                    summary: soilRes.visibleCharacteristics,
+                    fullDetails: `Visible: ${soilRes.visibleCharacteristics}\nPossible type: ${soilRes.possibleSoilType}\nOrganic matter: ${soilRes.organicMatterIndicators}\nNote: ${soilRes.uncertaintyExplanation}\nTests: ${soilRes.recommendedAdditionalTests.join('; ')}`,
+                    imageDataUrl: thumb,
+                  });
+                  if (savedOk) setSoilSaved(true);
+                } finally {
+                  setSavingRecord(false);
+                }
               }}
               className="flex-1 min-h-[48px] px-5 rounded-full bg-light-primary text-light-on-primary clay-btn-primary font-label text-label-lg disabled:opacity-60"
             >
@@ -561,21 +641,26 @@ export const ScanSection: React.FC<ScanSectionProps> = ({
           <div className="flex flex-wrap gap-2 pt-2">
             <button
               type="button"
-              disabled={cropSaved || !confirmedCrop.trim()}
+              disabled={cropSaved || savingRecord || !confirmedCrop.trim()}
               onClick={async () => {
-                const thumb = preparedImage ? await createStorageThumbnail(preparedImage.previewUrl) : undefined;
-                onConfirmCrop(confirmedCrop.trim(), confirmedStage);
-                const savedOk = onSaveRecord({
-                  category: 'CROP_SCAN',
-                  origin: cropRes.isDemo ? 'DEMO_DATA' : 'AI_INTERPRETATION',
-                  isDemo: Boolean(cropRes.isDemo),
-                  dataSource: cropRes.isDemo ? 'Demo Crop Scan' : 'FarmerBuddy Vision Crop Scan (Confirmed)',
-                  title: `Confirmed Crop: ${confirmedCrop.trim()} (${confirmedStage})`,
-                  summary: `Suggested: ${cropRes.possibleCropName} (${cropRes.confidenceLevel})`,
-                  fullDetails: `Confirmed Crop: ${confirmedCrop}\nStage: ${confirmedStage}\nFeatures: ${cropRes.identifyingFeatures}\nNotes: ${cropRes.uncertaintyNotes}`,
-                  imageDataUrl: thumb,
-                });
-                if (savedOk) setCropSaved(true);
+                setSavingRecord(true);
+                try {
+                  const thumb = preparedImage ? await createStorageThumbnail(preparedImage.previewUrl) : undefined;
+                  onConfirmCrop(confirmedCrop.trim(), confirmedStage);
+                  const savedOk = onSaveRecord({
+                    category: 'CROP_SCAN',
+                    origin: cropRes.isDemo ? 'DEMO_DATA' : 'AI_INTERPRETATION',
+                    isDemo: Boolean(cropRes.isDemo),
+                    dataSource: cropRes.isDemo ? 'Demo Crop Scan' : 'FarmerBuddy Vision Crop Scan (Confirmed)',
+                    title: `Confirmed Crop: ${confirmedCrop.trim()} (${confirmedStage})`,
+                    summary: `Suggested: ${cropRes.possibleCropName} (${cropRes.confidenceLevel})`,
+                    fullDetails: `Confirmed Crop: ${confirmedCrop}\nStage: ${confirmedStage}\nFeatures: ${cropRes.identifyingFeatures}\nNotes: ${cropRes.uncertaintyNotes}`,
+                    imageDataUrl: thumb,
+                  });
+                  if (savedOk) setCropSaved(true);
+                } finally {
+                  setSavingRecord(false);
+                }
               }}
               className="flex-1 min-h-[48px] px-5 rounded-full bg-light-primary text-light-on-primary clay-btn-primary font-label text-label-lg disabled:opacity-60"
             >
@@ -637,20 +722,25 @@ export const ScanSection: React.FC<ScanSectionProps> = ({
           <div className="flex flex-wrap gap-2 pt-2">
             <button
               type="button"
-              disabled={plantSaved}
+              disabled={plantSaved || savingRecord}
               onClick={async () => {
-                const thumb = preparedImage ? await createStorageThumbnail(preparedImage.previewUrl) : undefined;
-                const savedOk = onSaveRecord({
-                  category: 'PLANT_HEALTH_SCAN',
-                  origin: plantRes.isDemo ? 'DEMO_DATA' : 'AI_INTERPRETATION',
-                  isDemo: Boolean(plantRes.isDemo),
-                  dataSource: plantRes.isDemo ? 'Demo Plant Health Sample' : 'FarmerBuddy Vision Plant Check',
-                  title: `${plantRes.isDemo ? 'Demo ' : ''}Plant Health — ${cropName}`,
-                  summary: plantRes.visibleSymptoms,
-                  fullDetails: `Symptoms: ${plantRes.visibleSymptoms}\nPossible reasons: ${plantRes.possibleExplanations.join('; ')}\nChecks: ${plantRes.suggestedChecks.join('; ')}\nNext steps: ${plantRes.cautiousNextSteps.join('; ')}\nLimitations: ${plantRes.diagnosisLimitations}`,
-                  imageDataUrl: thumb,
-                });
-                if (savedOk) setPlantSaved(true);
+                setSavingRecord(true);
+                try {
+                  const thumb = preparedImage ? await createStorageThumbnail(preparedImage.previewUrl) : undefined;
+                  const savedOk = onSaveRecord({
+                    category: 'PLANT_HEALTH_SCAN',
+                    origin: plantRes.isDemo ? 'DEMO_DATA' : 'AI_INTERPRETATION',
+                    isDemo: Boolean(plantRes.isDemo),
+                    dataSource: plantRes.isDemo ? 'Demo Plant Health Sample' : 'FarmerBuddy Vision Plant Check',
+                    title: `${plantRes.isDemo ? 'Demo ' : ''}Plant Health — ${cropName}`,
+                    summary: plantRes.visibleSymptoms,
+                    fullDetails: `Symptoms: ${plantRes.visibleSymptoms}\nPossible reasons: ${plantRes.possibleExplanations.join('; ')}\nChecks: ${plantRes.suggestedChecks.join('; ')}\nNext steps: ${plantRes.cautiousNextSteps.join('; ')}\nLimitations: ${plantRes.diagnosisLimitations}`,
+                    imageDataUrl: thumb,
+                  });
+                  if (savedOk) setPlantSaved(true);
+                } finally {
+                  setSavingRecord(false);
+                }
               }}
               className="flex-1 min-h-[48px] px-5 rounded-full bg-light-primary text-light-on-primary clay-btn-primary font-label text-label-lg disabled:opacity-60"
             >
@@ -768,20 +858,25 @@ export const ScanSection: React.FC<ScanSectionProps> = ({
           <div className="flex flex-wrap gap-2 pt-2">
             <button
               type="button"
-              disabled={labSaved}
+              disabled={labSaved || savingRecord}
               onClick={async () => {
-                const thumb = preparedImage ? await createStorageThumbnail(preparedImage.previewUrl) : undefined;
-                const savedOk = onSaveRecord({
-                  category: 'NPK_REPORT',
-                  origin: labRes.isDemo ? 'DEMO_DATA' : 'LAB_REPORT',
-                  isDemo: Boolean(labRes.isDemo),
-                  dataSource: labRes.labSource || 'Uploaded Soil Health Card',
-                  title: `${labRes.isDemo ? 'Demo ' : ''}Soil Lab NPK Report`,
-                  summary: `N: ${labRes.nitrogen} • P: ${labRes.phosphorus} • K: ${labRes.potassium} (${labRes.unit})`,
-                  fullDetails: `Lab: ${labRes.labSource}\nDate: ${labRes.reportDate}\nN: ${labRes.nitrogen} ${labRes.unit}\nP: ${labRes.phosphorus} ${labRes.unit}\nK: ${labRes.potassium} ${labRes.unit}`,
-                  imageDataUrl: thumb,
-                });
-                if (savedOk) setLabSaved(true);
+                setSavingRecord(true);
+                try {
+                  const thumb = preparedImage ? await createStorageThumbnail(preparedImage.previewUrl) : undefined;
+                  const savedOk = onSaveRecord({
+                    category: 'NPK_REPORT',
+                    origin: labRes.isDemo ? 'DEMO_DATA' : 'LAB_REPORT',
+                    isDemo: Boolean(labRes.isDemo),
+                    dataSource: labRes.labSource || 'Uploaded Soil Health Card',
+                    title: `${labRes.isDemo ? 'Demo ' : ''}Soil Lab NPK Report`,
+                    summary: `N: ${labRes.nitrogen} • P: ${labRes.phosphorus} • K: ${labRes.potassium} (${labRes.unit})`,
+                    fullDetails: `Lab: ${labRes.labSource}\nDate: ${labRes.reportDate}\nN: ${labRes.nitrogen} ${labRes.unit}\nP: ${labRes.phosphorus} ${labRes.unit}\nK: ${labRes.potassium} ${labRes.unit}`,
+                    imageDataUrl: thumb,
+                  });
+                  if (savedOk) setLabSaved(true);
+                } finally {
+                  setSavingRecord(false);
+                }
               }}
               className="flex-1 min-h-[48px] px-5 rounded-full bg-light-primary text-light-on-primary clay-btn-primary font-label text-label-lg disabled:opacity-60"
             >
@@ -837,17 +932,22 @@ export const ScanSection: React.FC<ScanSectionProps> = ({
               type="button"
               disabled={loading || !regCrop.trim() || !regLocation.trim()}
               onClick={async () => {
+                const requestId = ++regRequestIdRef.current;
                 setError(null);
                 setRegRes(null);
                 setRegSaved(false);
                 setLoading(true);
                 try {
                   const res = await soilApi.fetchRegionalNpk(regCrop, regLocation, regSoilType);
+                  if (requestId !== regRequestIdRef.current) return;
                   setRegRes(res);
                 } catch (err) {
+                  if (requestId !== regRequestIdRef.current) return;
                   setError(err instanceof Error ? err.message : 'Regional lookup failed.');
                 } finally {
-                  setLoading(false);
+                  if (requestId === regRequestIdRef.current) {
+                    setLoading(false);
+                  }
                 }
               }}
               className="min-h-[50px] px-5 rounded-full bg-light-primary text-light-on-primary clay-btn-primary font-label text-label-lg disabled:opacity-60"

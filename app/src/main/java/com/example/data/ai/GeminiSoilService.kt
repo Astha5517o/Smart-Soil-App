@@ -459,7 +459,17 @@ class GeminiSoilService(private val context: Context) {
             .removePrefix("```")
             .removeSuffix("```")
             .trim()
-        return JSONObject(cleaned)
+        return try {
+            JSONObject(cleaned)
+        } catch (e: Exception) {
+            val start = cleaned.indexOf('{')
+            val end = cleaned.lastIndexOf('}')
+            if (start >= 0 && end > start) {
+                JSONObject(cleaned.substring(start, end + 1))
+            } else {
+                throw e
+            }
+        }
     }
 
     private suspend fun <T> runSafeAi(block: suspend () -> Result<T>): Result<T> {
@@ -472,7 +482,10 @@ class GeminiSoilService(private val context: Context) {
             throw e
         } catch (e: Exception) {
             Log.e(TAG, "Firebase AI Logic request failed", e)
-            val rawMsg = e.localizedMessage.orEmpty()
+            val rawMsg = listOfNotNull(e.localizedMessage, e.cause?.localizedMessage)
+                .filter { it.isNotBlank() }
+                .distinct()
+                .joinToString(" — ")
             val friendlyMsg = when {
                 rawMsg.contains("403", ignoreCase = true) || rawMsg.contains("appcheck", ignoreCase = true) ->
                     "App verification failed (HTTP 403). Make sure you have internet access and the latest app install."
@@ -492,12 +505,16 @@ class GeminiSoilService(private val context: Context) {
     private suspend fun decodeScaledBitmap(uri: Uri, maxDim: Int = 1024): Bitmap? =
         withContext(Dispatchers.IO) {
             try {
-                val orientation = context.contentResolver.openInputStream(uri)?.use { stream ->
-                    ExifInterface(stream).getAttributeInt(
-                        ExifInterface.TAG_ORIENTATION,
-                        ExifInterface.ORIENTATION_NORMAL
-                    )
-                } ?: ExifInterface.ORIENTATION_NORMAL
+                val orientation = try {
+                    context.contentResolver.openInputStream(uri)?.use { stream ->
+                        ExifInterface(stream).getAttributeInt(
+                            ExifInterface.TAG_ORIENTATION,
+                            ExifInterface.ORIENTATION_NORMAL
+                        )
+                    } ?: ExifInterface.ORIENTATION_NORMAL
+                } catch (_: Exception) {
+                    ExifInterface.ORIENTATION_NORMAL
+                }
 
                 val boundsOptions = BitmapFactory.Options().apply { inJustDecodeBounds = true }
                 context.contentResolver.openInputStream(uri)?.use { stream ->

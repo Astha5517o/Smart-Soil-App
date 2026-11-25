@@ -84,7 +84,8 @@ export const BleCalibrationModal: React.FC<BleCalibrationModalProps> = ({
             Char: {draft.calibration.characteristicUuid}
           </p>
 
-          <p className="font-body text-body-sm text-light-on-surface-variant">Tap scan to open the browser BLE device picker. Select your powered-on ESP32 (for example, SMART_SOIL) to connect.</p>\n          {deviceName && <p className="font-body text-body-sm text-light-primary">Selected device: {deviceName}</p>}
+          <p className="font-body text-body-sm text-light-on-surface-variant">Tap scan to open the browser BLE device picker. Select your powered-on ESP32 (for example, SMART_SOIL) to connect.</p>
+          {deviceName && <p className="font-body text-body-sm text-light-primary">Selected device: {deviceName}</p>}
           {lastReading && (
             <p className="font-mono text-[11px] text-light-on-surface-variant">
               Last packet: {new Date(lastReading.timestampMs).toLocaleTimeString()}

@@ -33,29 +33,45 @@ export async function compressImageFile(
     throw new Error('Please choose a JPEG, PNG, or WebP photo (PDFs and documents are not supported).');
   }
 
-  const dataUrl = await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ''));
-    reader.onerror = () => reject(new Error('Could not read the selected image file.'));
-    reader.readAsDataURL(file);
-  });
+  const loadImageElement = (src: string): Promise<HTMLImageElement> =>
+    new Promise((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => {
+        if (el.naturalWidth <= 0 || el.naturalHeight <= 0) {
+          reject(new Error('Image appears corrupted or empty. Please choose another photo.'));
+        } else {
+          resolve(el);
+        }
+      };
+      el.onerror = () =>
+        reject(new Error('This image format could not be decoded. Please upload a JPEG, PNG, or WebP photo.'));
+      el.src = src;
+    });
 
-  if (!dataUrl.startsWith('data:')) {
-    throw new Error('Could not read image data. Please pick another photo.');
+  let img: HTMLImageElement;
+  const objectUrl = typeof URL !== 'undefined' && URL.createObjectURL ? URL.createObjectURL(file) : '';
+  try {
+    if (objectUrl) {
+      img = await loadImageElement(objectUrl);
+    } else {
+      throw new Error('ObjectURL unavailable');
+    }
+  } catch {
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.onerror = () => reject(new Error('Could not read the selected image file.'));
+      reader.readAsDataURL(file);
+    });
+    if (!dataUrl.startsWith('data:')) {
+      throw new Error('Could not read image data. Please pick another photo.');
+    }
+    img = await loadImageElement(dataUrl);
+  } finally {
+    if (objectUrl) {
+      URL.revokeObjectURL(objectUrl);
+    }
   }
-
-  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-    const el = new Image();
-    el.onload = () => {
-      if (el.naturalWidth <= 0 || el.naturalHeight <= 0) {
-        reject(new Error('Image appears corrupted or empty. Please choose another photo.'));
-      } else {
-        resolve(el);
-      }
-    };
-    el.onerror = () => reject(new Error('This image format could not be decoded. Please upload a JPEG or PNG photo.'));
-    el.src = dataUrl;
-  });
 
   const encodeAt = (dimension: number, quality: number): string => {
     const scale = Math.min(dimension / img.naturalWidth, dimension / img.naturalHeight, 1);
@@ -127,6 +143,7 @@ async function postJson<T>(url: string, body: Record<string, unknown>): Promise<
       data = null;
     }
 
+    const looksLikeHtml = rawText.trimStart().startsWith('<');
     if (!res.ok) {
       if (data?.error) {
         throw new Error(data.error);
@@ -138,6 +155,11 @@ async function postJson<T>(url: string, body: Record<string, unknown>): Promise<
         throw new Error('Photo upload is too large for the server (413). Please try a smaller or cropped photo.');
       }
       throw new Error(`Server error (${res.status}). Please try again.`);
+    }
+    if (looksLikeHtml) {
+      throw new Error(
+        'Scanner API returned an HTML page instead of JSON. Deploy with Vercel serverless /api routes or run locally with `npm run dev` / `vercel dev`.'
+      );
     }
     if (!data || typeof data !== 'object') {
       throw new Error('Unexpected empty response from server. Please try again.');
@@ -156,7 +178,53 @@ async function postJson<T>(url: string, body: Record<string, unknown>): Promise<
   }
 }
 
+export interface ApiHealthStatus {
+  ok: boolean;
+  apiReachable: boolean;
+  hasGeminiKey: boolean;
+  liveVerified?: boolean;
+  model?: string;
+  message: string;
+}
+
 export const soilApi = {
+  async checkHealth(probe = false): Promise<ApiHealthStatus> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15_000);
+    try {
+      const res = await fetch(`/api/health${probe ? '?probe=1' : ''}`, {
+        method: 'GET',
+        signal: controller.signal,
+      });
+      const rawText = await res.text();
+      if (rawText.trimStart().startsWith('<')) {
+        return {
+          ok: false,
+          apiReachable: false,
+          hasGeminiKey: false,
+          message: 'Scanner API routes (/api/*) are unavailable here. Deploy on Vercel or run with `npm run dev` / `vercel dev`.',
+        };
+      }
+      const parsed = rawText ? (JSON.parse(rawText) as Partial<ApiHealthStatus>) : {};
+      return {
+        ok: Boolean(parsed.ok && res.ok),
+        apiReachable: parsed.apiReachable ?? true,
+        hasGeminiKey: Boolean(parsed.hasGeminiKey),
+        liveVerified: parsed.liveVerified,
+        model: parsed.model,
+        message: parsed.message || (res.ok ? 'API connected.' : `API health check returned HTTP ${res.status}.`),
+      };
+    } catch {
+      return {
+        ok: false,
+        apiReachable: false,
+        hasGeminiKey: false,
+        message: 'Could not reach /api/health. Check your internet connection or Vercel deployment.',
+      };
+    } finally {
+      clearTimeout(timer);
+    }
+  },
   analyzeSoil(imageBase64: string, mimeType: string): Promise<SoilScanResult> {
     return postJson('/api/analyze-soil', { imageBase64, mimeType });
   },

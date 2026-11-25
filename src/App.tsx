@@ -161,7 +161,7 @@ export const App: React.FC = () => {
       const handlePacket = (view: DataView | null | undefined) => {
         if (!view) return;
         const bytes = new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
-        const packet = new TextDecoder().decode(bytes).replace(/\\0+$/g, '').trim();
+        const packet = new TextDecoder().decode(bytes).replace(/\0+$/g, '').trim();
         if (!packet) return;
 
         const parsed = parseAndValidateSensorJson(packet, settings.calibration);

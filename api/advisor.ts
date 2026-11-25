@@ -1,8 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import {
-  GEMINI_MODEL,
   Type,
   extractResponseText,
+  generateWithModelFallback,
   handleGeminiError,
   normalizeString,
   parseJsonSafe,
@@ -27,8 +27,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       : 'Provide practical soil and crop guidance based on current readings and context.';
 
   try {
-    const response = await ai.models.generateContent({
-      model: GEMINI_MODEL,
+    const response = await generateWithModelFallback(ai, {
       contents: [
         {
           role: 'user',

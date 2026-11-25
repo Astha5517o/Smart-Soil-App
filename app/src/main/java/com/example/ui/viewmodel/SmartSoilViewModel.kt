@@ -502,12 +502,16 @@ class SmartSoilViewModel(application: Application) : AndroidViewModel(applicatio
                 val dir = File(app.filesDir, "saved_scans").apply { mkdirs() }
                 val dest = File(dir, "scan_${UUID.randomUUID()}.jpg")
 
-                val orientation = app.contentResolver.openInputStream(sourceUri)?.use { stream ->
-                    ExifInterface(stream).getAttributeInt(
-                        ExifInterface.TAG_ORIENTATION,
-                        ExifInterface.ORIENTATION_NORMAL
-                    )
-                } ?: ExifInterface.ORIENTATION_NORMAL
+                val orientation = try {
+                    app.contentResolver.openInputStream(sourceUri)?.use { stream ->
+                        ExifInterface(stream).getAttributeInt(
+                            ExifInterface.TAG_ORIENTATION,
+                            ExifInterface.ORIENTATION_NORMAL
+                        )
+                    } ?: ExifInterface.ORIENTATION_NORMAL
+                } catch (_: Exception) {
+                    ExifInterface.ORIENTATION_NORMAL
+                }
 
                 val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
                 app.contentResolver.openInputStream(sourceUri)?.use { stream ->

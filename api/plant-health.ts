@@ -1,8 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import {
-  GEMINI_MODEL,
   Type,
   extractResponseText,
+  generateWithModelFallback,
   handleGeminiError,
   normalizeString,
   normalizeStringArray,
@@ -24,8 +24,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const safeCrop = typeof cropName === 'string' && cropName.trim() ? cropName.trim().slice(0, 80) : 'Crop';
 
   try {
-    const response = await ai.models.generateContent({
-      model: GEMINI_MODEL,
+    const response = await generateWithModelFallback(ai, {
       contents: [
         {
           role: 'user',
