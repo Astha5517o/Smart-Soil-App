@@ -143,10 +143,6 @@ export const App: React.FC = () => {
         );
       }
 
-      if (!characteristic.properties.notify && !characteristic.properties.read) {
-        throw new Error('The sensor characteristic must support Notify or Read.');
-      }
-
       bleCharacteristicRef.current = characteristic;
 
       const handlePacket = (view: DataView | null | undefined) => {
@@ -164,7 +160,8 @@ export const App: React.FC = () => {
         }
       };
 
-      if (characteristic.properties.notify) {
+      let notificationsStarted = false;
+      try {
         const onValueChanged = (event: Event) => {
           const target = event.target as BluetoothRemoteGATTCharacteristic | null;
           handlePacket(target?.value);
@@ -172,11 +169,29 @@ export const App: React.FC = () => {
         notificationHandlerRef.current = onValueChanged;
         characteristic.addEventListener('characteristicvaluechanged', onValueChanged);
         await characteristic.startNotifications();
+        notificationsStarted = true;
+      } catch {
+        // Some firmware exposes Read without Notify. Try a one-time read below.
+        if (notificationHandlerRef.current) {
+          characteristic.removeEventListener(
+            'characteristicvaluechanged',
+            notificationHandlerRef.current
+          );
+          notificationHandlerRef.current = null;
+        }
       }
 
-      if (characteristic.properties.read) {
+      let initialReadSucceeded = false;
+      try {
         const initial = await characteristic.readValue();
         handlePacket(initial);
+        initialReadSucceeded = true;
+      } catch {
+        // A Notify-only characteristic may not implement Read.
+      }
+
+      if (!notificationsStarted && !initialReadSucceeded) {
+        throw new Error('The sensor characteristic supports neither usable notifications nor reads. Enable READ or NOTIFY in the ESP32 firmware.');
       }
 
       setBleStatus('connected');
