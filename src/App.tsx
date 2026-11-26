@@ -111,13 +111,25 @@ export const App: React.FC = () => {
         optionalServices: [serviceUuid],
       });
 
-      // Clean up any previous device listeners before switching devices.
+      // Fully release a previous connection before switching to another device.
+      if (bleCharacteristicRef.current && notificationHandlerRef.current) {
+        bleCharacteristicRef.current.removeEventListener(
+          'characteristicvaluechanged',
+          notificationHandlerRef.current
+        );
+      }
       if (bleDeviceRef.current && disconnectHandlerRef.current) {
         bleDeviceRef.current.removeEventListener(
           'gattserverdisconnected',
           disconnectHandlerRef.current
         );
       }
+      if (gattServerRef.current?.connected) {
+        gattServerRef.current.disconnect();
+      }
+      gattServerRef.current = null;
+      bleCharacteristicRef.current = null;
+      notificationHandlerRef.current = null;
       bleDeviceRef.current = device;
       setBleDeviceName(device.name || 'Unnamed BLE device');
 
@@ -209,7 +221,8 @@ export const App: React.FC = () => {
 
       setBleStatus('connected');
       setDisplayMode('live');
-      setBleError(null);
+      // Keep any validation warning raised by the first sensor packet visible.
+      if (!liveReading) setBleError((current) => current);
     } catch (err) {
       const error = err as DOMException;
       if (error?.name === 'NotFoundError') {
