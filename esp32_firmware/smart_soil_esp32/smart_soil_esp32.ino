@@ -151,7 +151,7 @@ void loop() {
   }
 
   // 4. Build JSON packet — NEVER send fake values for disconnected sensors
-  JsonDocument doc;
+  StaticJsonDocument<192> doc;
   if (moistureValid) {
     doc["moisture_raw"] = moistureRaw;
     doc["moisture_percent"] = moisturePct;
