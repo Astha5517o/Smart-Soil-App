@@ -17,11 +17,35 @@ export function parseAndValidateSensorJson(
 ): { ok: true; reading: SensorReading } | { ok: false; error: string } {
   try {
     const trimmed = rawText.trim();
+    const warnings: string[] = [];
+
+    // Current ESP32 sketch sends only the raw ADC integer as UTF-8 text (e.g. "2380").
+    // Accept that protocol as well as the newer JSON payload used by the expanded firmware.
+    if (/^\\d{1,4}$/.test(trimmed)) {
+      const rawAdc = Number(trimmed);
+      if (!Number.isInteger(rawAdc) || rawAdc < 0 || rawAdc > 4095) {
+        return { ok: false, error: 'Invalid raw ADC packet (expected integer 0..4095).' };
+      }
+      return {
+        ok: true,
+        reading: {
+          moistureRaw: rawAdc,
+          moisturePercent: computeMoistureFromRaw(rawAdc, cal),
+          ph: null,
+          temperatureC: null,
+          timestampMs: nowMs,
+          isDemo: false,
+          validationWarnings: [
+            'This ESP32 firmware sends moisture only. pH and temperature are not included in its BLE packet.',
+          ],
+        },
+      };
+    }
+
     if (!trimmed.startsWith('{')) {
-      return { ok: false, error: 'Malformed sensor packet (not a JSON object).' };
+      return { ok: false, error: 'Unsupported sensor packet. Expected a raw ADC integer or JSON object.' };
     }
     const data = JSON.parse(trimmed) as Record<string, unknown>;
-    const warnings: string[] = [];
 
     let moistureRaw: number | null = null;
     if (typeof data.moisture_raw === 'number' && Number.isFinite(data.moisture_raw)) {
