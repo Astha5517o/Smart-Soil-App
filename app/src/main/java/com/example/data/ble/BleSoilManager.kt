@@ -52,8 +52,30 @@ object SensorPayloadParser {
     ): Result<SensorReading> {
         return try {
             val trimmed = rawJson.trim()
+            // The currently working ESP32 sketch transmits a single raw ADC integer,
+            // for example "2380", rather than a JSON object.
+            if (trimmed.matches(Regex("\\d{1,4}"))) {
+                val raw = trimmed.toInt()
+                if (raw !in 0..4095) {
+                    return Result.failure(IllegalArgumentException("Invalid raw ADC packet (expected 0..4095)."))
+                }
+                return Result.success(
+                    SensorReading(
+                        moistureRaw = raw,
+                        moisturePercent = calibration.computeMoistureFromRaw(raw),
+                        ph = null,
+                        temperatureC = null,
+                        timestampMs = receivedAtMs,
+                        isDemo = false,
+                        isAlertDemo = false,
+                        validationErrors = listOf(
+                            "This ESP32 firmware sends moisture only. pH and temperature are not included in its BLE packet."
+                        )
+                    )
+                )
+            }
             if (trimmed.isEmpty() || !trimmed.startsWith("{")) {
-                return Result.failure(IllegalArgumentException("Malformed sensor packet (not JSON object)."))
+                return Result.failure(IllegalArgumentException("Unsupported sensor packet. Expected a raw ADC integer or JSON object."))
             }
             val json = JSONObject(trimmed)
             val errors = mutableListOf<String>()
