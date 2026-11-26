@@ -4,7 +4,7 @@ import { BleCalibrationModal } from './components/BleCalibrationModal';
 import { HomeDashboard } from './components/HomeDashboard';
 import { ReportsSection } from './components/ReportsSection';
 import { ScanSection, type ScanSubView } from './components/ScanSection';
-import { isWebBluetoothSupported, parseAndValidateSensorJson } from './services/bleService';
+import { getWebBluetoothSupportMessage, isWebBluetoothSupported, parseAndValidateSensorJson } from './services/bleService';
 import { DEFAULT_SETTINGS, soilStorage } from './services/storageService';
 import type {
   BleConnectionStatus,
@@ -93,11 +93,11 @@ export const App: React.FC = () => {
   const connectBle = async () => {
     if (!isWebBluetoothSupported() || !navigator.bluetooth) {
       setBleStatus('unsupported');
-      setBleError('Web Bluetooth is unavailable. Open this HTTPS site in Chrome or Edge on a supported device.');
+      setBleError(getWebBluetoothSupportMessage() || 'Web Bluetooth is unavailable. Open this HTTPS site in Google Chrome on Android.');
       return;
     }
 
-    const serviceUuid = settings.calibration.serviceUuid.trim();
+    if (!window.isSecureContext) {\n      setBleStatus('unsupported');\n      setBleError('Bluetooth requires a secure HTTPS page. Open the official FarmerBuddy HTTPS link in Chrome.');\n      return;\n    }\n\n    const serviceUuid = settings.calibration.serviceUuid.trim();
     const characteristicUuid = settings.calibration.characteristicUuid.trim();
     setBleError(null);
     setBleStatus('connecting');
