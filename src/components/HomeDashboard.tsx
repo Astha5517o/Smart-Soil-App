@@ -257,7 +257,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
             <div>
               <strong className="block font-headline text-title-md">{isConnected ? 'Waiting for Sensor Data' : 'Sensor Not Connected'}</strong>
               <p className="font-body text-body-sm">
-                {bleError || '{bleError || (isConnected ? 'Bluetooth link is active, but no valid sensor packet has arrived yet.' : 'Connect your ESP32 via Bluetooth or switch to Demo.')}'}
+                {bleError || (isConnected ? 'Bluetooth link is active, but no valid sensor packet has arrived yet.' : 'Connect your ESP32 via Bluetooth or switch to Demo.')}
               </p>
             </div>
             <button
