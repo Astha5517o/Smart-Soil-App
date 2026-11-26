@@ -1,7 +1,20 @@
 import type { CalibrationConfig, SensorReading } from '../types/soil';
 
+export function getWebBluetoothSupportMessage(): string | null {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') {
+    return 'Bluetooth can only be used in a browser tab.';
+  }
+  if (!window.isSecureContext) {
+    return 'This page is not a secure HTTPS context. Open the official HTTPS FarmerBuddy link.';
+  }
+  if (!('bluetooth' in navigator)) {
+    return 'This browser or in-app webview does not support Web Bluetooth. Open this same link directly in Google Chrome on Android. Samsung Internet, embedded previews, and some installed shortcuts may not expose Bluetooth.';
+  }
+  return null;
+}
+
 export function isWebBluetoothSupported(): boolean {
-  return typeof navigator !== 'undefined' && typeof navigator.bluetooth !== 'undefined';
+  return getWebBluetoothSupportMessage() === null;
 }
 
 export function computeMoistureFromRaw(rawAdc: number, cal: CalibrationConfig): number | null {
