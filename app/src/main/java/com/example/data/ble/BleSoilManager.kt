@@ -237,24 +237,16 @@ class BleSoilManager(private val context: Context) {
             errorMessage = null
         )
 
-        val serviceUuid = runCatching { UUID.fromString(calibrationConfig.serviceUuid) }.getOrNull()
-        val filters = if (serviceUuid != null) {
-            listOf(
-                ScanFilter.Builder()
-                    .setServiceUuid(ParcelUuid(serviceUuid))
-                    .build()
-            )
-        } else {
-            emptyList()
-        }
+        // Scan without a hardware filter, then validate each advertisement in scanCallback.
+        // Some Android BLE stacks miss devices when a strict 128-bit service filter is used.
         val settings = ScanSettings.Builder()
             .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+            .setCallbackType(ScanSettings.CALLBACK_TYPE_ALL_MATCHES)
             .build()
 
         isScanning = true
         try {
-            // Scan with service filter first; fallback handled by user retry if needed
-            scanner.startScan(filters, settings, scanCallback)
+            scanner.startScan(null, settings, scanCallback)
         } catch (e: SecurityException) {
             isScanning = false
             _bleState.value = _bleState.value.copy(
@@ -331,6 +323,17 @@ class BleSoilManager(private val context: Context) {
     private val scanCallback = object : ScanCallback() {
         @SuppressLint("MissingPermission")
         override fun onScanResult(callbackType: Int, result: ScanResult) {
+            val serviceUuid = runCatching { UUID.fromString(calibrationConfig.serviceUuid) }.getOrNull()
+            val advertisedServices = result.scanRecord?.serviceUuids.orEmpty()
+            val advertisedName = result.scanRecord?.deviceName
+                ?: runCatching { result.device.name }.getOrNull()
+            val hasExpectedService = serviceUuid != null &&
+                advertisedServices.any { it.uuid == serviceUuid }
+            val hasExpectedName = advertisedName?.startsWith("SMART_SOIL", ignoreCase = true) == true
+
+            // Ignore unrelated nearby BLE devices; never connect to the first random device.
+            if (!hasExpectedService && !hasExpectedName) return
+
             val device = result.device ?: return
             stopScanningInternal()
             scanTimeoutJob?.cancel()
@@ -342,7 +345,7 @@ class BleSoilManager(private val context: Context) {
             scanTimeoutJob?.cancel()
             _bleState.value = _bleState.value.copy(
                 status = BleConnectionStatus.ERROR,
-                errorMessage = "BLE scan failed (code $errorCode). Please verify Bluetooth is enabled."
+                errorMessage = "BLE scan failed (code $errorCode). Check Bluetooth permissions and try again. Scan error: $errorCode"
             )
         }
     }
@@ -372,38 +375,49 @@ class BleSoilManager(private val context: Context) {
     private val gattCallback = object : BluetoothGattCallback() {
         @SuppressLint("MissingPermission")
         override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
-            if (status != BluetoothGatt.GATT_SUCCESS && newState != BluetoothProfile.STATE_CONNECTED) {
+            if (gatt !== activeGatt) {
                 gatt.close()
-                if (activeGatt == gatt) activeGatt = null
+                return
+            }
+            if (status != BluetoothGatt.GATT_SUCCESS) {
+                gatt.close()
+                activeGatt = null
                 _bleState.value = _bleState.value.copy(
-                    status = BleConnectionStatus.DISCONNECTED,
-                    errorMessage = "ESP32 BLE connection lost (status $status). Tap Reconnect to try again."
+                    status = BleConnectionStatus.ERROR,
+                    errorMessage = "ESP32 connection failed (GATT status $status). Turn the ESP32 off/on and reconnect."
                 )
                 return
             }
 
             if (newState == BluetoothProfile.STATE_CONNECTED) {
                 _bleState.value = _bleState.value.copy(
-                    status = BleConnectionStatus.CONNECTED,
-                    errorMessage = null
+                    status = BleConnectionStatus.CONNECTING,
+                    errorMessage = "Connected to ESP32. Discovering sensor service..."
                 )
-                gatt.discoverServices()
+                if (!gatt.discoverServices()) {
+                    _bleState.value = _bleState.value.copy(
+                        status = BleConnectionStatus.ERROR,
+                        errorMessage = "Could not start GATT service discovery. Tap Reconnect."
+                    )
+                }
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 gatt.close()
                 if (activeGatt == gatt) activeGatt = null
                 _bleState.value = _bleState.value.copy(
                     status = BleConnectionStatus.DISCONNECTED,
-                    errorMessage = "Disconnected from ESP32."
+                    lastReading = null,
+                    errorMessage = "ESP32 disconnected. Check its power and reconnect."
                 )
             }
         }
 
         @SuppressLint("MissingPermission")
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
+            if (gatt !== activeGatt) return
             if (status != BluetoothGatt.GATT_SUCCESS) {
                 _bleState.value = _bleState.value.copy(
                     status = BleConnectionStatus.ERROR,
-                    errorMessage = "Service discovery failed (status $status)."
+                    errorMessage = "Service discovery failed (GATT status $status)."
                 )
                 return
             }
@@ -416,25 +430,119 @@ class BleSoilManager(private val context: Context) {
             if (characteristic == null) {
                 _bleState.value = _bleState.value.copy(
                     status = BleConnectionStatus.ERROR,
-                    errorMessage = "Soil sensor GATT characteristic not found on connected device."
+                    errorMessage = "ESP32 connected, but the configured sensor service/characteristic was not found. Check both UUIDs."
                 )
                 return
             }
 
-            gatt.setCharacteristicNotification(characteristic, true)
-            val descriptor = characteristic.getDescriptor(CCCD_UUID)
-            if (descriptor != null) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    gatt.writeDescriptor(descriptor, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
+            val supportsNotify = characteristic.properties and BluetoothGattCharacteristic.PROPERTY_NOTIFY != 0
+            val supportsIndicate = characteristic.properties and BluetoothGattCharacteristic.PROPERTY_INDICATE != 0
+            val supportsRead = characteristic.properties and BluetoothGattCharacteristic.PROPERTY_READ != 0
+            if (!supportsNotify && !supportsIndicate && !supportsRead) {
+                _bleState.value = _bleState.value.copy(
+                    status = BleConnectionStatus.ERROR,
+                    errorMessage = "Sensor characteristic supports neither notifications nor reads."
+                )
+                return
+            }
+
+            if (supportsNotify || supportsIndicate) {
+                val localEnabled = gatt.setCharacteristicNotification(characteristic, true)
+                val descriptor = characteristic.getDescriptor(CCCD_UUID)
+                if (!localEnabled || descriptor == null) {
+                    if (supportsRead) {
+                        _bleState.value = _bleState.value.copy(
+                            status = BleConnectionStatus.CONNECTING,
+                            errorMessage = "Notifications unavailable; using live characteristic reads."
+                        )
+                        gatt.readCharacteristic(characteristic)
+                    } else {
+                        _bleState.value = _bleState.value.copy(
+                            status = BleConnectionStatus.ERROR,
+                            errorMessage = "Could not enable BLE notifications (CCCD descriptor missing)."
+                        )
+                    }
+                    return
+                }
+
+                val enableValue = if (supportsNotify) {
+                    BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                } else {
+                    BluetoothGattDescriptor.ENABLE_INDICATION_VALUE
+                }
+                val writeStarted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    gatt.writeDescriptor(descriptor, enableValue) == BluetoothGatt.GATT_SUCCESS
                 } else {
                     @Suppress("DEPRECATION")
-                    descriptor.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                    descriptor.value = enableValue
                     @Suppress("DEPRECATION")
                     gatt.writeDescriptor(descriptor)
                 }
+                if (!writeStarted) {
+                    if (supportsRead) {
+                        _bleState.value = _bleState.value.copy(
+                            status = BleConnectionStatus.CONNECTING,
+                            errorMessage = "Notification setup failed; trying characteristic reads."
+                        )
+                        gatt.readCharacteristic(characteristic)
+                    } else {
+                        _bleState.value = _bleState.value.copy(
+                            status = BleConnectionStatus.ERROR,
+                            errorMessage = "Could not subscribe to ESP32 sensor notifications."
+                        )
+                    }
+                }
+                // Do not start a read until the descriptor write callback; Android GATT
+                // permits one outstanding operation at a time.
+                return
             }
-            // Also trigger an initial read
-            gatt.readCharacteristic(characteristic)
+
+            if (supportsRead) {
+                _bleState.value = _bleState.value.copy(
+                    status = BleConnectionStatus.CONNECTING,
+                    errorMessage = "Notifications not supported; using characteristic reads."
+                )
+                gatt.readCharacteristic(characteristic)
+            }
+        }
+
+        @SuppressLint("MissingPermission")
+        override fun onDescriptorWrite(
+            gatt: BluetoothGatt,
+            descriptor: BluetoothGattDescriptor,
+            status: Int
+        ) {
+            if (gatt !== activeGatt || descriptor.uuid != CCCD_UUID) return
+            if (status == BluetoothGatt.GATT_SUCCESS) {
+                _bleState.value = _bleState.value.copy(
+                    status = BleConnectionStatus.CONNECTED,
+                    errorMessage = null
+                )
+                val service = gatt.getService(UUID.fromString(calibrationConfig.serviceUuid))
+                val characteristic = service?.getCharacteristic(UUID.fromString(calibrationConfig.characteristicUuid))
+                if (characteristic != null &&
+                    characteristic.properties and BluetoothGattCharacteristic.PROPERTY_READ != 0
+                ) {
+                    gatt.readCharacteristic(characteristic)
+                }
+            } else {
+                val service = gatt.getService(UUID.fromString(calibrationConfig.serviceUuid))
+                val characteristic = service?.getCharacteristic(UUID.fromString(calibrationConfig.characteristicUuid))
+                val supportsRead = characteristic != null &&
+                    characteristic.properties and BluetoothGattCharacteristic.PROPERTY_READ != 0
+                if (supportsRead && characteristic != null) {
+                    _bleState.value = _bleState.value.copy(
+                        status = BleConnectionStatus.CONNECTING,
+                        errorMessage = "Notification subscription failed; falling back to reads."
+                    )
+                    gatt.readCharacteristic(characteristic)
+                } else {
+                    _bleState.value = _bleState.value.copy(
+                        status = BleConnectionStatus.ERROR,
+                        errorMessage = "ESP32 notification subscription failed (GATT status $status)."
+                    )
+                }
+            }
         }
 
         override fun onCharacteristicChanged(
@@ -442,7 +550,7 @@ class BleSoilManager(private val context: Context) {
             characteristic: BluetoothGattCharacteristic,
             value: ByteArray
         ) {
-            handlePacketBytes(value)
+            if (gatt === activeGatt) handlePacketBytes(value)
         }
 
         @Deprecated("Deprecated in Java")
@@ -450,6 +558,7 @@ class BleSoilManager(private val context: Context) {
             gatt: BluetoothGatt,
             characteristic: BluetoothGattCharacteristic
         ) {
+            if (gatt !== activeGatt) return
             @Suppress("DEPRECATION")
             characteristic.value?.let { handlePacketBytes(it) }
         }
@@ -460,8 +569,17 @@ class BleSoilManager(private val context: Context) {
             value: ByteArray,
             status: Int
         ) {
+            if (gatt !== activeGatt) return
             if (status == BluetoothGatt.GATT_SUCCESS) {
                 handlePacketBytes(value)
+                if (_bleState.value.status == BleConnectionStatus.CONNECTING) {
+                    _bleState.value = _bleState.value.copy(status = BleConnectionStatus.CONNECTED, errorMessage = null)
+                }
+            } else {
+                _bleState.value = _bleState.value.copy(
+                    status = BleConnectionStatus.ERROR,
+                    errorMessage = "Could not read the ESP32 sensor characteristic (GATT status $status)."
+                )
             }
         }
 
@@ -471,9 +589,18 @@ class BleSoilManager(private val context: Context) {
             characteristic: BluetoothGattCharacteristic,
             status: Int
         ) {
+            if (gatt !== activeGatt) return
             if (status == BluetoothGatt.GATT_SUCCESS) {
                 @Suppress("DEPRECATION")
                 characteristic.value?.let { handlePacketBytes(it) }
+                if (_bleState.value.status == BleConnectionStatus.CONNECTING) {
+                    _bleState.value = _bleState.value.copy(status = BleConnectionStatus.CONNECTED, errorMessage = null)
+                }
+            } else {
+                _bleState.value = _bleState.value.copy(
+                    status = BleConnectionStatus.ERROR,
+                    errorMessage = "Could not read the ESP32 sensor characteristic (GATT status $status)."
+                )
             }
         }
     }
