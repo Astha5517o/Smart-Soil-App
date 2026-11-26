@@ -74,7 +74,7 @@ export const BleCalibrationModal: React.FC<BleCalibrationModalProps> = ({
 
           {!supported && (
             <p className="bg-warning-container text-on-warning-container p-2 rounded font-body text-body-sm">
-              Web Bluetooth is unavailable in this browser (use Chrome/Edge on Android, macOS, or Windows over HTTPS). Use Demo Mode for exhibition fallback.
+              Web Bluetooth is unavailable here. Open the stable FarmerBuddy HTTPS link directly in Google Chrome on Android. Embedded previews and some browsers or shortcuts do not expose Bluetooth.
             </p>
           )}
 
@@ -84,7 +84,7 @@ export const BleCalibrationModal: React.FC<BleCalibrationModalProps> = ({
             Char: {draft.calibration.characteristicUuid}
           </p>
 
-          <p className="font-body text-body-sm text-light-on-surface-variant">Tap scan to open the browser BLE device picker. Select your powered-on SMART_SOIL_ESP32 device to connect.</p>
+          <p className="font-body text-body-sm text-light-on-surface-variant">Tap scan to open the browser BLE device picker. Select your powered-on SMART_SOIL device to connect.</p>
           {deviceName && <p className="font-body text-body-sm text-light-primary">Selected device: {deviceName}</p>}
           {lastReading && (
             <p className="font-mono text-[11px] text-light-on-surface-variant">
