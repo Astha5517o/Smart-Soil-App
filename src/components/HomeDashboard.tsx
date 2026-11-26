@@ -36,6 +36,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
 }) => {
   const isLiveMode = displayMode === 'live';
   const isConnected = bleStatus === 'connected';
+  const hasLiveReading = isConnected && reading !== null && !reading.isDemo;
 
   const mVal = reading?.moisturePercent ?? null;
   const dryCutoff = Math.max(5, settings.minMoisture - 6);
@@ -49,12 +50,12 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   } = (() => {
     if (mVal === null) {
       return {
-        label: 'Not connected',
-        hindi: 'सेंसर जुड़ा नहीं है',
+        label: isConnected ? 'Waiting for data' : 'Not connected',
+        hindi: isConnected ? 'डेटा की प्रतीक्षा' : 'सेंसर जुड़ा नहीं है',
         badgeClass: 'bg-light-surface-container text-light-on-surface-variant',
         barClass: 'bg-light-outline',
         cardTint: 'border border-light-outline-variant/60',
-        hint: 'Connect your ESP32 sensor or tap Demo to preview.',
+        hint: isConnected ? 'Bluetooth is connected. Waiting for a valid sensor reading from the ESP32.' : 'Connect your ESP32 sensor or tap Demo to preview.',
       };
     }
     if (mVal < dryCutoff) {
@@ -104,7 +105,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
     phVal === null
       ? isLiveMode && !isConnected
         ? 'Not connected'
-        : 'Unavailable'
+        : isConnected ? 'Waiting for data' : 'Unavailable'
       : phLow
       ? 'Acidic'
       : phHigh
@@ -119,7 +120,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
     tVal === null
       ? isLiveMode && !isConnected
         ? 'Not connected'
-        : 'Unavailable'
+        : isConnected ? 'Waiting for data' : 'Unavailable'
       : tWarm
       ? 'Warm'
       : tCool
@@ -183,7 +184,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
                 aria-hidden="true"
               />
               <span className="font-label text-label-sm">
-                {isConnected ? 'ESP32 Live' : bleStatus === 'unsupported' ? 'No BLE' : 'ESP32 Off'}
+                {hasLiveReading ? 'ESP32 Live' : isConnected ? 'BLE Connected' : bleStatus === 'unsupported' ? 'No BLE' : 'ESP32 Off'}
               </span>
             </button>
 
@@ -195,7 +196,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
                   : 'bg-warning-container text-on-warning-container'
               }`}
             >
-              {isLiveMode && isConnected ? 'LIVE' : isLiveMode ? 'OFFLINE' : 'DEMO'}
+              {isLiveMode && hasLiveReading ? 'LIVE DATA' : isLiveMode && isConnected ? 'WAITING' : isLiveMode ? 'OFFLINE' : 'DEMO'}
             </span>
           </div>
         </div>
@@ -251,12 +252,12 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
 
       <main className="flex-1 px-page-margin py-gutter-md pb-28 flex flex-col gap-gutter-md">
         {/* Honest Disconnected Banner in Live Mode */}
-        {isLiveMode && !isConnected && (
+        {isLiveMode && (!isConnected || !hasLiveReading) && (
           <div className="bg-warning-container text-on-warning-container rounded-lg p-gutter-md flex flex-wrap items-center justify-between gap-gutter-sm">
             <div>
-              <strong className="block font-headline text-title-md">Sensor Not Connected</strong>
+              <strong className="block font-headline text-title-md">{isConnected ? 'Waiting for Sensor Data' : 'Sensor Not Connected'}</strong>
               <p className="font-body text-body-sm">
-                {bleError || 'Connect your ESP32 via Bluetooth or switch to Demo.'}
+                {bleError || '{bleError || (isConnected ? 'Bluetooth link is active, but no valid sensor packet has arrived yet.' : 'Connect your ESP32 via Bluetooth or switch to Demo.')}'}
               </p>
             </div>
             <button
@@ -295,7 +296,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
 
           <div className="flex items-baseline justify-between gap-2 flex-wrap">
             <span className="font-mono text-[44px] leading-none font-bold text-light-on-surface tabular-nums">
-              {mVal !== null ? `${mVal}%` : 'Not connected'}
+              {mVal !== null ? `${mVal}%` : isConnected ? 'Waiting for data' : 'Not connected'}
             </span>
             {reading && (
               <button
