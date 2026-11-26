@@ -221,8 +221,6 @@ export const App: React.FC = () => {
 
       setBleStatus('connected');
       setDisplayMode('live');
-      // Keep any validation warning raised by the first sensor packet visible.
-      if (!liveReading) setBleError((current) => current);
     } catch (err) {
       const error = err as DOMException;
       if (error?.name === 'NotFoundError') {
