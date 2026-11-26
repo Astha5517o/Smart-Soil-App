@@ -21,7 +21,7 @@ export function parseAndValidateSensorJson(
 
     // Current ESP32 sketch sends only the raw ADC integer as UTF-8 text (e.g. "2380").
     // Accept that protocol as well as the newer JSON payload used by the expanded firmware.
-    if (/^\\d{1,4}$/.test(trimmed)) {
+    if (/^\d{1,4}$/.test(trimmed)) {
       const rawAdc = Number(trimmed);
       if (!Number.isInteger(rawAdc) || rawAdc < 0 || rawAdc > 4095) {
         return { ok: false, error: 'Invalid raw ADC packet (expected integer 0..4095).' };
