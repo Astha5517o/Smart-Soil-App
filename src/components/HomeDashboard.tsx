@@ -317,6 +317,10 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
             />
           </div>
 
+          <div className="flex items-center gap-2 rounded-md bg-light-surface-container-low px-3 py-2">
+            <span className="text-xl" aria-hidden="true">{mVal === null ? '🙂' : mVal < dryCutoff ? '😟' : mVal < settings.minMoisture ? '😐' : '😊'}</span>
+            <span className="font-body text-body-sm text-light-on-surface">{mVal === null ? 'Waiting for a real soil reading.' : mVal < dryCutoff ? 'Dry alert: check the root zone and irrigate if the soil is dry.' : mVal < settings.minMoisture ? 'Moisture is getting low. Recheck soon.' : mVal > settings.maxMoisture ? 'Soil is very wet. Pause watering and check drainage.' : 'Moisture is within your selected crop range.'}</span>
+          </div>
           <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-light-outline-variant/40 text-body-sm">
             <span className="font-body text-light-on-surface">{moistureStatus.hint}</span>
             <span className="font-mono text-[11px] text-light-on-surface-variant">
@@ -381,7 +385,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
             </div>
 
             <p className="font-body text-body-sm text-light-on-surface-variant">
-              Root zone · तापमान
+              {tVal === null ? 'Waiting for temperature sensor' : tWarm ? 'Warm soil: check moisture before irrigation.' : tCool ? 'Cool soil: avoid watering by temperature alone.' : 'Use moisture and crop stage to guide watering.'}
             </p>
           </article>
         </section>
