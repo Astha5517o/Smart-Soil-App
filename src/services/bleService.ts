@@ -35,13 +35,17 @@ export function parseAndValidateSensorJson(
     let moisturePercent: number | null = null;
     if (moistureRaw !== null) {
       moisturePercent = computeMoistureFromRaw(moistureRaw, cal);
-    } else if (typeof data.moisture_percent === 'number' && Number.isFinite(data.moisture_percent)) {
-      if (data.moisture_percent >= 0 && data.moisture_percent <= 100) {
-        moisturePercent = Math.round(data.moisture_percent);
-      } else {
-        warnings.push('Invalid moisture_percent (expected 0..100).');
-      }
     } else {
+      const percentValue = data.moisture_percent ?? data.moisture;
+      if (typeof percentValue === 'number' && Number.isFinite(percentValue)) {
+        if (percentValue >= 0 && percentValue <= 100) {
+          moisturePercent = Math.round(percentValue);
+        } else {
+          warnings.push('Invalid moisture percentage (expected 0..100).');
+        }
+      }
+    }
+    if (moistureRaw === null && moisturePercent === null) {
       warnings.push('Moisture reading unavailable.');
     }
 
